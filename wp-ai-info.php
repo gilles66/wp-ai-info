@@ -16,7 +16,6 @@ Carbon::setLocale( 'fr' );
 
 //require_once( '_debug.php' );
 require_once( '.env.php' );
-require_once( 'vendor/autoload.php' );
 require_once( 'debug.php' );
 
 /**
@@ -35,8 +34,8 @@ function ai_init() {
 		return;
 	}
 
-	require_once ('test-donnees-structurees.php');
-	// phpinfo();
+	// require_once ('test-donnees-structurees.php');
+	require_once ('test-donnees-structurees-2.php');
 	exit;
 
 	$client = OpenAI::client( OPENAI_API_KEY_PLUGIN_AI_INFO );

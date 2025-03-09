@@ -24,7 +24,7 @@ $data = [
 			"content" => "Donne-moi une blague en JSON."
 		]
 	],
-	"temperature" => 0.7
+	"temperature" => 0.9
 ];
 
 // Initialiser cURL
