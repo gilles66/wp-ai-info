@@ -22,8 +22,8 @@ require_once( 'debug.php' );
 /**
  * Développé par moi.
  */
-require_once( 'open-ai-php-client.php' );
-exit;
+// require_once( 'open-ai-php-client.php' );
+// exit;
 
 function ai_init() {
 
@@ -35,7 +35,8 @@ function ai_init() {
 		return;
 	}
 
-	phpinfo();
+	require_once ('test-donnees-structurees.php');
+	// phpinfo();
 	exit;
 
 	$client = OpenAI::client( OPENAI_API_KEY_PLUGIN_AI_INFO );
