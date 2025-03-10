@@ -3,7 +3,8 @@
     "nesbot/carbon": "^3.8",
     "openai-php/client": "^0.10.3",
     "symfony/http-client": "^7.2",
-    "nyholm/psr7": "^1.8"
+    "nyholm/psr7": "^1.8",
+    "erusev/parsedown": "^1.7"
   },
   "config": {
     "allow-plugins": {

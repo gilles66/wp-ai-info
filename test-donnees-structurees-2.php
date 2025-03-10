@@ -97,9 +97,13 @@ else {
 
 		if ( is_json( $article_json ) ) {
 			$article = json_decode( $article_json );
+
+			$Parsedown = new Parsedown();
+			$post_content = $Parsedown->text( $article->content );
+
 			$args_insert = [
 				'post_title'   => $article->title,
-				'post_content' => $article->content,
+				'post_content' => $post_content,
 				'post_status'  => 'publish',
 			];
 
