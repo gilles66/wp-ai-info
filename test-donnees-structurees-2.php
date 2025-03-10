@@ -7,7 +7,8 @@ use Carbon\Carbon;
 // Définir la locale en français
 Carbon::setLocale( 'fr' );
 $date = Carbon::now();
-// die( $date );
+$date_fr = $date->translatedFormat( 'l d F Y' );
+// die();
 
 // Remplace par ta clé API OpenAI
 $api_key = OPENAI_API_KEY_PLUGIN_AI_INFO;
@@ -15,48 +16,61 @@ $api_key = OPENAI_API_KEY_PLUGIN_AI_INFO;
 // URL de l'API OpenAI
 $url = "https://api.openai.com/v1/chat/completions";
 
+/**
+ * Comment utiliser le paramètre response_format :
+ * https://platform.openai.com/docs/guides/structured-outputs#how-to-use
+ */
+
+$data_content = "Écris un article sur l'actualité la plus importante pour la date du $date_fr .";
+$data_content .= "Renvoie le formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
 
 // Configuration des données envoyées
 $data = [
-	"model"       => "gpt-4o", // GPT-4-turbo, gpt-4o
-	"messages"    => [
+	"model"         => "gpt-4o",
+	// modèle avec support des appels de fonctions
+	"messages"      => [
 		[
 			"role"    => "system",
-			"content" => "Tu es un rédacteur de blog qui écrit des articles informatifs et bien structurés."
+			"content" => "Tu es un rédacteur de blog qui écrit des articles informatifs et bien structurés d'environ mille mots."
 		],
 		[
 			"role"    => "user",
-			"content" => "Écris un article sur l'actualité la plus importante pour la date du lundi 3 mars 2025. Retourne uniquement du JSON avec deux clés : \"titre\" et \"content\"."
+			"content" => $data_content
 		]
 	],
-	"temperature" => 0.7,
-	"max_tokens"  => 800
+	// Définition de la fonction pour structurer la sortie
+	"functions"     => [
+		[
+			"name"        => "create_blog_article",
+			"description" => "Crée un article de blog en français avec un titre et un contenu.",
+			"parameters"  => [
+				"type"       => "object",
+				"properties" => [
+					"title"   => [
+						"type"        => "string",
+						"description" => "Le titre de l'article"
+					],
+					"content" => [
+						"type"        => "string",
+						"description" => "Le contenu complet de l'article"
+					]
+				],
+				"required"   => [
+					"title",
+					"content"
+				]
+			]
+		]
+	],
+	// Indiquer à l'API de répondre via l'appel de la fonction définie
+	"function_call" => [ "name" => "create_blog_article" ],
+	"temperature"   => 0.7,
+	"max_tokens"    => 2000
+	// ajustez selon vos besoins
 ];
 
-/*
-Attention, ce que j'ai écrit ci-dessous n'est pas vrai en utilisant le modèle gpt-4o.
----
-
-Le retour de openAI est
-{
-  "titre": "Erreur de date",
-  "content": "Désolé, je ne peux pas fournir d'informations sur les événements futurs, y compris ceux de 2025. Mon dernier accès à l'information remonte à décembre 2023. Pour des informations à jour, veuillez consulter une source d'actualités actuelle."
-}
-Donc avec l'api je ne peux pas avoir d'informations récentes !
-Zut !
-
-Et pourtant l'article http://ai-info.localhost/index.php/2025/03/09/crise-energetique-en-france-mesures-durgence-et-perspectives/
-du 9 mars 2025 fait référence à 2025.
-J'avais inséré cet article avec l'utilisation de la class trouvée sur GitHub, donc je ne comprends pas.
-
-J'apprends que https://newsapi.org/ peut fournir des informations via API mais coùte cher :
-min $449 per month, billed monthly.
- */
-
-// Initialiser cURL
 $ch = curl_init( $url );
 
-// Configurer l'option cURL
 curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
 curl_setopt( $ch, CURLOPT_POST, true );
 curl_setopt( $ch, CURLOPT_HTTPHEADER, [
@@ -75,12 +89,28 @@ if ( curl_errno( $ch ) ) {
 else {
 	// Décoder la réponse JSON
 	$response_data = json_decode( $response, true );
+	pre2( $response_data );
 
 	// Extraire uniquement le contenu généré par OpenAI
-	if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
-		$article_json = $response_data['choices'][0]['message']['content'];
-		header( 'Content-Type: application/json' );
-		echo $article_json;
+	if ( isset( $response_data['choices'][0]['message']['function_call']['arguments'] ) ) {
+		$article_json = $response_data['choices'][0]['message']['function_call']['arguments'];
+
+		if ( is_json( $article_json ) ) {
+			$article = json_decode( $article_json );
+			$args_insert = [
+				'post_title'   => $article->title,
+				'post_content' => $article->content,
+				'post_status'  => 'publish',
+			];
+
+			// https://developer.wordpress.org/reference/functions/wp_insert_post/
+			$result_insert = wp_insert_post( $args_insert );
+			pre( $result_insert );
+		}
+		else {
+			echo 'Le format de retour de "arguments" n\'est pas du json';
+			// pre2( $article_json );
+		}
 	}
 	else {
 		echo json_encode( [ "error" => "Aucune réponse valide de l'API" ] );

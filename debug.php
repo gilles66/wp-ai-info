@@ -1,7 +1,6 @@
 <?php
 /**
  * Les éléments de débogage.
- *
  * Dernière modification de ce fichier : 20240905.
  */
 
@@ -16,7 +15,29 @@
 function gwp_dont_log_notices_callback() {
 	error_reporting( E_ALL & ~E_NOTICE );
 }
+
 // add_action('init', 'gwp_dont_log_notices_callback');
+
+if ( ! function_exists( 'is_json' ) ) {
+	/**
+	 * Indique si le paramètre passé est au format json.
+	 *
+	 * @param mixed $string Le paramètres à tester.
+	 * @return bool
+	 */
+	function is_json( $string ) {
+		// Vérifier que $data est bien une chaîne
+		if ( ! is_string( $string ) ) {
+			return false;
+		}
+		// Tente de décoder la chaîne JSON
+		json_decode( $string );
+
+		// Vérifie s'il y a eu une erreur lors du décodage
+		return ( json_last_error() === JSON_ERROR_NONE );
+	}
+}
+
 
 /**
  * Affiche une variable de manière claire.
@@ -117,8 +138,8 @@ function prexit3( $p, $color = null ) {
  * tag_pre_open()
  */
 function tag_pre_open( $color ) {
-	$color   = ( $color == null ) ? 'aquamarine' : $color; // powderblue
-	$margin  = 'margin:10px;';
+	$color = ( $color == null ) ? 'aquamarine' : $color; // powderblue
+	$margin = 'margin:10px;';
 	$padding = 'padding:12px;';
 
 	if ( function_exists( 'is_admin' ) ) {
@@ -153,11 +174,12 @@ function gwp_wp_footer_debug() {
 	echo timer_stop( 0 ) . ' secondes<br />';
 
 	// Afficher TOUTES les requêtes que la page a générées et pour ça, mettre define('SAVEQUERIES', true); dans wp-config.php
-	if (current_user_can('administrator')) {
+	if ( current_user_can( 'administrator' ) ) {
 		global $wpdb;
 		pre( $wpdb->queries );
 	}
 }
+
 //add_filter( 'wp_footer', 'gwp_wp_footer_debug', 999 );
 //add_filter( 'admin_footer', 'gwp_wp_footer_debug', 999 );
 
@@ -202,7 +224,8 @@ function gwplog( $msg, $type_de_debug = 1 ) {
 	for ( $i = 0; $i < strlen( $msg ); $i++ ) {
 		if ( ord( $msg[$i] ) != 0 ) {
 			$new_str .= $msg[$i];
-		} else {
+		}
+		else {
 			$new_str .= ' ';
 		}
 	}
@@ -213,7 +236,7 @@ function gwplog( $msg, $type_de_debug = 1 ) {
 		$href = add_query_arg( [
 			'str'    => base64_encode( $msg ),
 			'encode' => 'base64'
-		] , 'https://outils.perpi.bz/unserialize' );
+		], 'https://outils.perpi.bz/unserialize' );
 
 		$msg = "<a target='_blank' href='$href' style='color:hotpink;'>$msg</a>";
 	}
@@ -225,7 +248,8 @@ function gwplog( $msg, $type_de_debug = 1 ) {
 	}
 	/**
 	 * Debug avec nom, type et valeur de la variable.
-	 */ elseif ( 2 === $type_de_debug ) {
+	 */
+	elseif ( 2 === $type_de_debug ) {
 		$msg = "La variable <strong style='color:blue;'>\$msg</strong> est de type <strong style='color:blue;'>$type_de_la_variable</strong> et vaut : $msg";
 	}
 
