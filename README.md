@@ -22,3 +22,5 @@ WP AI Info est un plugin WordPress permettant de créer et publier automatiqueme
 3. **Installer les dépendances** avec Composer :
    ```bash
    composer install
+   composer require nesbot/carbon
+   composer require erusev/parsedown

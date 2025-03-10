@@ -20,26 +20,78 @@ new wp_ai_info;
  */
 class wp_ai_info {
 
+	// Clé de chiffrement (doit être une chaîne de 32 caractères pour AES-256)
+	const ENCRYPTION_KEY = 'Y0AT8xhF8xAm0ZDAxThkuFkrsrMrnxzs';
+
 	/**
 	 * Constructor.
 	 */
-	function __construct() {
-		add_action( 'init', [$this, 'wp_ai_info_init'], 20, 1 );
+	public function __construct() {
+		add_action( 'init', [ $this, 'wp_ai_info_init' ], 20 );
+		add_action( 'admin_init', [ $this, 'wp_ai_info_register_settings' ] );
+		add_action( 'admin_menu', [ $this, 'wp_ai_info_menu_options' ] );
 	}
 
 	/**
-	 * Makes the call to the openai api.
+	 * Sanitize la valeur, puis chiffre l'option avant sauvegarde.
+	 *
+	 * @param string $input
+	 * @return string
+	 */
+	public function sanitize_option( $input ) {
+		$clean = sanitize_text_field( $input );
+		return self::encrypt_value( $clean );
+	}
+
+	/**
+	 * Chiffre une valeur avec AES-256-CBC.
+	 *
+	 * @param string $data
+	 * @return string
+	 */
+	private static function encrypt_value( $data ) {
+		$cipher_method = 'AES-256-CBC';
+		$iv_length = openssl_cipher_iv_length( $cipher_method );
+		$iv = openssl_random_pseudo_bytes( $iv_length );
+		$encrypted = openssl_encrypt( $data, $cipher_method, self::ENCRYPTION_KEY, 0, $iv );
+		// Stocke l'IV avec les données chiffrées, puis encode en base64.
+		return base64_encode( $iv . $encrypted );
+	}
+
+	/**
+	 * Déchiffre une valeur chiffrée précédemment avec AES-256-CBC.
+	 *
+	 * @param string $data
+	 * @return string|false
+	 */
+	private static function decrypt_value( $data ) {
+		$data = base64_decode( $data );
+		$cipher_method = 'AES-256-CBC';
+		$iv_length = openssl_cipher_iv_length( $cipher_method );
+		$iv = substr( $data, 0, $iv_length );
+		$encrypted = substr( $data, $iv_length );
+		return openssl_decrypt( $encrypted, $cipher_method, self::ENCRYPTION_KEY, 0, $iv );
+	}
+
+	/**
+	 * Vérifie si une chaîne est du JSON valide.
+	 *
+	 * @param string $string
+	 * @return bool
+	 */
+	private static function is_json( $string ) {
+		json_decode( $string );
+		return (json_last_error() === JSON_ERROR_NONE);
+	}
+
+	/**
+	 * Appel à l'API OpenAI pour créer un article.
 	 *
 	 * @return void
-	 * @since  20250310
-	 * @author Gilles Dumas <circusmind@gmail.com>
 	 */
-	function wp_ai_info_init() {
+	public function wp_ai_info_init() {
 
-		// Définir la locale en français
-		Carbon::setLocale( 'fr' );
-
-		gwplog( 'wp_ai_info_init()' );
+		// gwplog( 'wp_ai_info_init()' );
 
 		if ( ! isset( $_GET['inserer-article-ai'] ) ) {
 			return;
@@ -49,22 +101,24 @@ class wp_ai_info {
 			return;
 		}
 
-		// Définir la locale en français
 		Carbon::setLocale( 'fr' );
 		$date = Carbon::now();
 		$date_fr = $date->translatedFormat( 'l d F Y' );
 
-		$api_key = OPENAI_API_KEY_PLUGIN_AI_INFO;
+		$encrypted_value = get_option( 'wp_ai_info_option' );
+		$api_key = '';
+		if ( ! empty( $encrypted_value ) ) {
+			$api_key = self::decrypt_value( $encrypted_value );
+		}
 
 		$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
 		$data_content = "Écris un article sur l'actualité la plus importante pour la date du $date_fr .";
-		$data_content .= "Renvoie le formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
+		$data_content .= " Renvoie le formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
 
-		// Configuration des données envoyées
+		// Configuration des données envoyées.
 		$data = [
-			"model"         => "gpt-4o",
-			// modèle avec support des appels de fonctions
+			"model"         => "gpt-4",
 			"messages"      => [
 				[
 					"role"    => "system",
@@ -75,7 +129,6 @@ class wp_ai_info {
 					"content" => $data_content
 				]
 			],
-			// Définition de la fonction pour structurer la sortie.
 			"functions"     => [
 				[
 					"name"        => "create_blog_article",
@@ -92,22 +145,16 @@ class wp_ai_info {
 								"description" => "Le contenu complet de l'article"
 							]
 						],
-						"required"   => [
-							"title",
-							"content"
-						]
+						"required"   => [ "title", "content" ]
 					]
 				]
 			],
-			// Indiquer à l'API de répondre via l'appel de la fonction définie
 			"function_call" => [ "name" => "create_blog_article" ],
 			"temperature"   => 0.7,
 			"max_tokens"    => 2000
-			// ajustez selon vos besoins
 		];
 
 		$ch = curl_init( $url_open_api_endpoint );
-
 		curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
 		curl_setopt( $ch, CURLOPT_POST, true );
 		curl_setopt( $ch, CURLOPT_HTTPHEADER, [
@@ -116,23 +163,19 @@ class wp_ai_info {
 		] );
 		curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
 
-		// Exécuter la requête et récupérer la réponse
 		$response = curl_exec( $ch );
 
-		// Vérifier s'il y a une erreur
 		if ( curl_errno( $ch ) ) {
 			echo json_encode( [ "error" => curl_error( $ch ) ] );
-		}
-		else {
-			// Décoder la réponse JSON
+		} else {
 			$response_data = json_decode( $response, true );
-			pre2( $response_data );
+			// pre2( $response_data );
 
-			// Extraire uniquement le contenu généré par OpenAI
+			// Extraire uniquement le contenu généré par OpenAI.
 			if ( isset( $response_data['choices'][0]['message']['function_call']['arguments'] ) ) {
 				$article_json = $response_data['choices'][0]['message']['function_call']['arguments'];
 
-				if ( is_json( $article_json ) ) {
+				if ( self::is_json( $article_json ) ) {
 					$article = json_decode( $article_json );
 
 					$Parsedown = new Parsedown();
@@ -147,21 +190,108 @@ class wp_ai_info {
 					// https://developer.wordpress.org/reference/functions/wp_insert_post/
 					$result_insert = wp_insert_post( $args_insert );
 					pre( $result_insert );
-				}
-				else {
+				} else {
 					echo 'Le format de retour de "arguments" n\'est pas du json';
 					// pre2( $article_json );
 				}
-			}
-			else {
-				echo json_encode( [ "error" => "Aucune réponse valide de l'API" ] );
+			} else {
+				gwplog( 'error : Aucune réponse valide de l\'API' );
 			}
 		}
 
-		// Fermer la connexion cURL
 		curl_close( $ch );
-
 		$GLOBALS['wp_ai_info_init_done'] = true;
 	}
 
+	/**
+	 * Ajout du menu dans l'administration.
+	 *
+	 * @return void
+	 */
+	public function wp_ai_info_menu_options() {
+		add_options_page(
+			'Settings - WP AI INFO', // Titre de la page
+			'WP AI Info',           // Titre du menu
+			'manage_options',       // Capacité requise
+			'wp_ai_info_options',   // Slug de la page
+			[ $this, 'wp_ai_info_options_page' ]   // Fonction callback
+		);
+	}
+
+	/**
+	 * Fonction de callback pour afficher le contenu de la page d'options.
+	 *
+	 * @return void
+	 */
+	public function wp_ai_info_options_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Vous n\'avez pas les permissions suffisantes pour accéder à cette page.' );
+		}
+		?>
+		<div class="wrap">
+			<h1><?php esc_html_e( 'WP AI INFO - Settings', 'mon-plugin-textdomain' ); ?></h1>
+			<form method="post" action="options.php">
+				<?php
+				settings_fields( 'wp_ai_info_options_group' );
+				do_settings_sections( 'wp_ai_info_options' );
+				submit_button();
+				?>
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Enregistrement des réglages, sections et champs.
+	 *
+	 * @return void
+	 */
+	public function wp_ai_info_register_settings() {
+		// Enregistrement du réglage avec callback de sanitization.
+		register_setting( 'wp_ai_info_options_group', 'wp_ai_info_option', [
+			'sanitize_callback' => [ $this, 'sanitize_option' ]
+		] );
+
+		// Ajout d'une section sur la page d'options.
+		add_settings_section(
+			'wp_ai_info_section_id',
+			'Titre de la section',
+			[ $this, 'wp_ai_info_section_callback' ],
+			'wp_ai_info_options'
+		);
+
+		// Ajout d'un champ dans la section.
+		add_settings_field(
+			'wp_ai_info_option',
+			'<label for="wp_ai_info_option_0">OpenAI API KEY</label>',
+			[ $this, 'wp_ai_info_option_callback' ],
+			'wp_ai_info_options',
+			'wp_ai_info_section_id'
+		);
+	}
+
+	/**
+	 * Callback pour la section d'options.
+	 *
+	 * @return void
+	 */
+	public function wp_ai_info_section_callback() {
+		echo '<p>Configurez les options de votre plugin ici.</p>';
+	}
+
+	/**
+	 * Callback pour le champ de l'option.
+	 *
+	 * @return void
+	 */
+	public function wp_ai_info_option_callback() {
+		$encrypted_value = get_option( 'wp_ai_info_option' );
+		$value = '';
+		if ( ! empty( $encrypted_value ) ) {
+			$value = self::decrypt_value( $encrypted_value );
+		}
+		?>
+		<input type="text" id="wp_ai_info_option_0" name="wp_ai_info_option" value="<?php echo esc_attr( $value ); ?>" class="regular-text" />
+		<?php
+	}
 }
