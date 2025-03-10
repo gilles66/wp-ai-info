@@ -8,4 +8,4 @@ define( 'OPENAI_API_KEY_PLUGIN_AI_INFO', 'sk-proj-Kb5FcUmKiqkKUYCom9sFg52afJekRV
 /**
  * https://platform.openai.com/settings/organization/general
  */
-define( 'OPENAI-ORGANIZATION', 'org-3vBKJLHscKCcBtsHMPS8ThBs' );
+define( 'OPENAI_ORGANIZATION', 'org-3vBKJLHscKCcBtsHMPS8ThBs' );

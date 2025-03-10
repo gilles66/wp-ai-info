@@ -14,104 +14,141 @@ use Carbon\Carbon;
 // Définir la locale en français
 Carbon::setLocale( 'fr' );
 
-//require_once( '_debug.php' );
 require_once( '.env.php' );
 require_once( 'debug.php' );
 
 /**
- * Développé par moi.
+ * Makes the call to the openai api.
+ *
+ * @return void
+ * @since  20250310
+ * @author Gilles Dumas <circusmind@gmail.com>
  */
-// require_once( 'open-ai-php-client.php' );
-// exit;
+function wp_ai_info_init() {
 
-function ai_init() {
+	gwplog( 'wp_ai_info_init()' );
 
 	if ( ! isset( $_GET['inserer-article-ai'] ) ) {
 		return;
 	}
 
-	if ( isset( $GLOBALS['init_deja_fait'] ) ) {
+	if ( isset( $GLOBALS['wp_ai_info_init_done'] ) ) {
 		return;
 	}
 
-	// require_once ('test-donnees-structurees.php');
-	require_once ('test-donnees-structurees-2.php');
-	exit;
-
-	$client = OpenAI::client( OPENAI_API_KEY_PLUGIN_AI_INFO );
-
-	// Obtenir la date actuelle
+	// Définir la locale en français
+	Carbon::setLocale( 'fr' );
 	$date = Carbon::now();
+	$date_fr = $date->translatedFormat( 'l d F Y' );
 
-	// Afficher la date formatée
-	echo $date->isoFormat( 'dddd D MMMM YYYY' );
+	$api_key = OPENAI_API_KEY_PLUGIN_AI_INFO;
 
-	$prompt = 'Écris un article optimisé pour le SEO concernant l\'actualité la plus importante en France  pour la date du ' . $date->isoFormat( 'dddd D MMMM YYYY' ) . '. ';
-	$prompt .= 'Mets des balises html pour la sémantique, pour que je puisse l\'insérer dans un composant d\'une page web. Mais ne mets pas de titre h1 et ne ré-écris pas le titre dans le contenu de l\'article. Tu peux mettre des titre h2 et h3 etc... ';
-	$prompt .= 'Renvoie du format json avec une entrée "title" pour le titre de l\'article et une entrée "content" pour le contenu de l\'article. Tu dois absolument renvoyer du format json car sinon je ne pourrai pas exploiter le résultat. ';
-	$prompt .= 'Ton retour doit donc comporter en premier caractère une accolade ouvrante et en dernier caractère une accolade fermante. Merci d\'avance. ';
+	$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
-	gwplog( '$prompt = ' );
-	gwplog( $prompt );
+	$data_content = "Écris un article sur l'actualité la plus importante pour la date du $date_fr .";
+	$data_content .= "Renvoie le formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
 
-	$result = $client->chat()->create( [
-		//		'model' => 'gpt-4',
-		'model'    => 'gpt-4o',
-		// Liste des models https://platform.openai.com/docs/models.
-		'messages' => [
-			[ 'role'    => 'user',
-			  'content' => $prompt
+	// Configuration des données envoyées
+	$data = [
+		"model"         => "gpt-4o",
+		// modèle avec support des appels de fonctions
+		"messages"      => [
+			[
+				"role"    => "system",
+				"content" => "Tu es un rédacteur de blog qui écrit des articles informatifs et bien structurés d'environ mille mots."
 			],
+			[
+				"role"    => "user",
+				"content" => $data_content
+			]
 		],
-	] );
-
-	$reponse = $result->choices[0]->message->content; // Hello! How can I assist you today?
-
-	gwplog( 'reponse = ' );
-	gwplog( $reponse );
-
-	$wordpress_post = [
-		'post_title'   => 'RAPPORT AI - ' . date( 'Ymd-H-i-s' ),
-		'post_content' => $prompt . '<hr />' . $reponse,
-		'post_status'  => 'publish',
-		'post_author'  => 1,
-		'post_type'    => 'rapport_appel_api_ai'
+		// Définition de la fonction pour structurer la sortie.
+		"functions"     => [
+			[
+				"name"        => "create_blog_article",
+				"description" => "Crée un article de blog en français avec un titre et un contenu.",
+				"parameters"  => [
+					"type"       => "object",
+					"properties" => [
+						"title"   => [
+							"type"        => "string",
+							"description" => "Le titre de l'article"
+						],
+						"content" => [
+							"type"        => "string",
+							"description" => "Le contenu complet de l'article"
+						]
+					],
+					"required"   => [
+						"title",
+						"content"
+					]
+				]
+			]
+		],
+		// Indiquer à l'API de répondre via l'appel de la fonction définie
+		"function_call" => [ "name" => "create_blog_article" ],
+		"temperature"   => 0.7,
+		"max_tokens"    => 2000
+		// ajustez selon vos besoins
 	];
-	$rapport_id = wp_insert_post( $wordpress_post );
-	$post_array = [ 'ID' => $rapport_id ];
 
-	if ( json_decode( $reponse ) ) {
-		$a_reponse = json_decode( $reponse );
-		pre2( $a_reponse, 'lightgreen' );
-		if ( isset( $a_reponse->title ) && isset( $a_reponse->content ) ) {
-			//		if ( isset( $a_reponse['title'] ) && isset( $a_reponse['content'] ) && isset( $a_reponse['date'] ) ) {
-			$wordpress_post = [
-				'post_title'   => $a_reponse->title,
-				'post_content' => $a_reponse->content,
-				'post_status'  => 'publish',
-				'post_author'  => 1,
-				'post_type'    => 'post'
-			];
-			wp_insert_post( $wordpress_post );
-			pre( 'Article inséré !' );
-			gwplog( 'Article inséré !' );
+	$ch = curl_init( $url_open_api_endpoint );
 
-			$post_array['is_json'] = 1;
-			wp_update_post( $post_array );
-		}
+	curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+	curl_setopt( $ch, CURLOPT_POST, true );
+	curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+		"Content-Type: application/json",
+		"Authorization: Bearer $api_key"
+	] );
+	curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
+
+	// Exécuter la requête et récupérer la réponse
+	$response = curl_exec( $ch );
+
+	// Vérifier s'il y a une erreur
+	if ( curl_errno( $ch ) ) {
+		echo json_encode( [ "error" => curl_error( $ch ) ] );
 	}
 	else {
-		pre( 'le retour n\'est pas au format json.' );
-		gwplog( 'le retour n\'est pas au format json.' );
-		pre2( $reponse );
+		// Décoder la réponse JSON
+		$response_data = json_decode( $response, true );
+		pre2( $response_data );
 
-		$post_array['is_json'] = 0;
-		wp_update_post( $post_array );
+		// Extraire uniquement le contenu généré par OpenAI
+		if ( isset( $response_data['choices'][0]['message']['function_call']['arguments'] ) ) {
+			$article_json = $response_data['choices'][0]['message']['function_call']['arguments'];
 
+			if ( is_json( $article_json ) ) {
+				$article = json_decode( $article_json );
+
+				$Parsedown = new Parsedown();
+				$post_content = $Parsedown->text( $article->content );
+
+				$args_insert = [
+					'post_title'   => $article->title,
+					'post_content' => $post_content,
+					'post_status'  => 'publish',
+				];
+
+				// https://developer.wordpress.org/reference/functions/wp_insert_post/
+				$result_insert = wp_insert_post( $args_insert );
+				pre( $result_insert );
+			}
+			else {
+				echo 'Le format de retour de "arguments" n\'est pas du json';
+				// pre2( $article_json );
+			}
+		}
+		else {
+			echo json_encode( [ "error" => "Aucune réponse valide de l'API" ] );
+		}
 	}
 
-	$GLOBALS['init_deja_fait'] = true;
+	// Fermer la connexion cURL
+	curl_close( $ch );
 
+	$GLOBALS['wp_ai_info_init_done'] = true;
 }
 
-add_action( 'init', 'ai_init', 20, 1 );
+add_action( 'init', 'wp_ai_info_init', 20, 1 );

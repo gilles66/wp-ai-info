@@ -28,7 +28,7 @@ curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
  */
 curl_setopt( $ch, CURLOPT_HTTPHEADER, [
 	'Authorization: Bearer ' . OPENAI_API_KEY_PLUGIN_AI_INFO,
-	'OpenAI-Organization: ' . 'org-3vBKJLHscKCcBtsHMPS8ThBs',
+	'OpenAI-Organization: ' . OPENAI_ORGANIZATION,
 ] );
 $response = curl_exec( $ch );
 pre( $response );

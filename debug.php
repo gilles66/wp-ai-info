@@ -1,22 +1,7 @@
 <?php
 /**
  * Les éléments de débogage.
- * Dernière modification de ce fichier : 20240905.
  */
-
-
-/**
- * Ne pas loguer les notices dans le wp-content/debug.log !
- *
- * @author Gilles Dumas <circusmind@gmail.com>
- * @since  20180910
- * @link   http://www.php.net/manual/en/function.error-reporting.php
- */
-function gwp_dont_log_notices_callback() {
-	error_reporting( E_ALL & ~E_NOTICE );
-}
-
-// add_action('init', 'gwp_dont_log_notices_callback');
 
 if ( ! function_exists( 'is_json' ) ) {
 	/**
@@ -38,7 +23,6 @@ if ( ! function_exists( 'is_json' ) ) {
 	}
 }
 
-
 /**
  * Affiche une variable de manière claire.
  *
@@ -50,10 +34,9 @@ if ( ! function_exists( 'is_json' ) ) {
 function pre( $p, $color = null, $htmlentities = false ) {
 	tag_pre_open( $color );
 
-	// @todo remettre la fonction is_json()
-	//	if ( is_json( $p ) ) {
-	//		$p = json_decode( $p );
-	//	}
+	if ( is_json( $p ) ) {
+		$p = json_decode( $p );
+	}
 
 	if ( $htmlentities ) {
 		$p = htmlentities( $p );
@@ -147,7 +130,6 @@ function tag_pre_open( $color ) {
 			$padding .= 'padding-left:235px;';
 		}
 	}
-
 	echo '<pre style="box-sizing:border-box;' . $margin . $padding . 'text-align:left;font-size:0.9em;color:black;text-shadow:none !important;background:' . $color . ';border:none;border-radius:4px;-webkit-border-radius:4px;-moz-border-radius:4px;-webkit-border-radius:4px;width:99%;overflow:inherit;font-family:monospace !important;">';
 }
 
@@ -159,39 +141,13 @@ function tag_pre_close() {
 }
 
 /**
- * Afficher des informations de performance en bas de la page
- *  --- nombre de requêtes
- *  --- temps de génération de la page
- *
- * @link https://codex.wordpress.org/Function_Reference/timer_stop
- */
-function gwp_wp_footer_debug() {
-	if ( ! is_gilles_connecte() ) {
-		return;
-	}
-
-	echo get_num_queries() . ' requêtes sql <br />';
-	echo timer_stop( 0 ) . ' secondes<br />';
-
-	// Afficher TOUTES les requêtes que la page a générées et pour ça, mettre define('SAVEQUERIES', true); dans wp-config.php
-	if ( current_user_can( 'administrator' ) ) {
-		global $wpdb;
-		pre( $wpdb->queries );
-	}
-}
-
-//add_filter( 'wp_footer', 'gwp_wp_footer_debug', 999 );
-//add_filter( 'admin_footer', 'gwp_wp_footer_debug', 999 );
-
-
-/**
  * Loggue avec error_log, en y ajoutant un préfixe utile pour chercher ensuite dans les logs.
  *
  * @author Gilles Dumas <circusmind@gmail.com>
  * @since  20150225
  * @link   http://php.net/manual/fr/function.error-log.php
  */
-function gwplog( $msg, $type_de_debug = 1 ) {
+function gwplog( $msg ) {
 
 	$is_object = $is_array = false;
 
@@ -241,17 +197,5 @@ function gwplog( $msg, $type_de_debug = 1 ) {
 		$msg = "<a target='_blank' href='$href' style='color:hotpink;'>$msg</a>";
 	}
 
-	/**
-	 * Debug simple avec valeur de la variable (comportement par défaut).
-	 */
-	if ( 1 === $type_de_debug ) {
-	}
-	/**
-	 * Debug avec nom, type et valeur de la variable.
-	 */
-	elseif ( 2 === $type_de_debug ) {
-		$msg = "La variable <strong style='color:blue;'>\$msg</strong> est de type <strong style='color:blue;'>$type_de_la_variable</strong> et vaut : $msg";
-	}
-
-	error_log( 'GWP LOG - ' . $msg );
+	error_log( 'WP-AI-INFO LOG - ' . $msg );
 }
