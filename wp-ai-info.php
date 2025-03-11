@@ -28,17 +28,25 @@ class wp_ai_info
 	 * Constructor.
 	 */
 	public function __construct() {
+
 		add_action( 'init', [
 			$this,
 			'wp_ai_info_init'
 		], 20 );
+
 		add_action( 'admin_init', [
 			$this,
 			'wp_ai_info_register_settings'
 		] );
+
 		add_action( 'admin_menu', [
 			$this,
 			'wp_ai_info_menu_options'
+		] );
+
+		add_action( 'add_meta_boxes', [
+			$this,
+			'wp_ai_info_add_metabox'
 		] );
 	}
 
@@ -77,6 +85,8 @@ class wp_ai_info
 
 		// gwplog( 'wp_ai_info_init()' );
 
+		$timestamp_debut = time();
+
 		if ( ! isset( $_GET['inserer-article-ai'] ) ) {
 			return;
 		}
@@ -98,7 +108,9 @@ class wp_ai_info
 		$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
 		$data_content = "Écris un article sur l'actualité la plus importante pour la date du $date_fr .";
-		$data_content .= " Renvoie le formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
+		$data_content .= "Renvoie le contenu de l'article formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
+		$data_content .= "Ne mets pas de retours à la ligne dans le contenu de l\'article car sinon il ne sera pas au format json.";
+		$data_content .= "Tu peux ajouter des \n pour les retours à la ligne.";
 
 		// Configuration des données envoyées.
 		$data = [
@@ -181,12 +193,14 @@ class wp_ai_info
 					// https://developer.wordpress.org/reference/functions/wp_insert_post/
 					$result_insert = wp_insert_post( $args_insert );
 					pre( $result_insert );
+					// @todo ici ajouter un test pour vérifier que $result_insert est bien un entier.
 
 					/**
 					 * Les post_meta.
 					 */
 					update_post_meta( $result_insert, 'wp_ai_info_prompt', $data_content );
 					update_post_meta( $result_insert, 'wp_ai_info_data', $data );
+					update_post_meta( $result_insert, 'wp_ai_info_temps_execution', time() - $timestamp_debut );
 				}
 				else {
 					echo 'Le format de retour de "arguments" n\'est pas du json';
@@ -312,7 +326,7 @@ class wp_ai_info
 	}
 
 	/**
-	 * Callback pour le champ de l'option.
+	 * Callback pour le champ de l'option dans la page de settings en BO.
 	 *
 	 * @return void
 	 */
@@ -325,5 +339,42 @@ class wp_ai_info
 		?>
 		<input type="text" id="wp_ai_info_option_0" name="wp_ai_info_option" value="<?php echo esc_attr( $value ); ?>" class="regular-text" />
 		<?php
+	}
+
+
+	public function wp_ai_info_add_metabox() {
+		add_meta_box( 'wp_ai_info_metabox', 'Informations WP AI Info', [
+			$this,
+			'wp_ai_info_metabox_callback'
+		], 'post', 'normal', 'high' );
+	}
+
+	public function wp_ai_info_metabox_callback( $post ) {
+		$meta_values = get_post_meta( $post->ID );
+		echo '<table class="form-table">';
+		foreach ( $meta_values as $key => $array_value ) {
+			// Non utilisation de la fonction str_starts_with() car elle est apparue en PHP8.
+			if ( strpos( $key, 'wp_ai_info_' ) === 0 ) {
+				echo '<tr>';
+				echo '<th scope="row" style="padding-top:30px;">';
+				echo esc_html( ucfirst( str_replace( 'wp_ai_info_', '', $key ) ) );
+				echo '</th>';
+				echo '<td>';
+				if ( is_array( $array_value ) ) {
+					$value = $array_value[0];
+					if ( 'wp_ai_info_temps_execution' == $key ) {
+						$value .= ' secondes';
+					}
+
+					echo '<pre style="background-color:aliceblue;white-space:pre-wrap;padding:15px;font-size:13px;border-radius:5px;">';
+					print_r( is_serialized( $value ) ? unserialize( $value ) : $value );
+
+					echo '</pre>';
+				}
+				echo '</td>';
+				echo '</tr>';
+			}
+		}
+		echo '</table>';
 	}
 }
