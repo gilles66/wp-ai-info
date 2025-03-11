@@ -114,7 +114,7 @@ class wp_ai_info
 
 		// Configuration des données envoyées.
 		$data = [
-			"model"         => "gpt-4",
+			"model"         => "gpt-4o-mini", // "gpt-4"
 			"messages"      => [
 				[
 					"role"    => "system",
@@ -149,8 +149,9 @@ class wp_ai_info
 				]
 			],
 			"function_call" => [ "name" => "create_blog_article" ],
-			"temperature"   => 0.7,
-			"max_tokens"    => 2000
+			"temperature"   => 0.1,
+			// "max_tokens"    => 2000 // https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
+			"max_completion_tokens"    => 2000
 		];
 
 		$ch = curl_init( $url_open_api_endpoint );
