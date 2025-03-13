@@ -107,14 +107,12 @@ class wp_ai_info
 
 		$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
-		$data_content = "Écris un article sur l'actualité la plus importante pour la date du $date_fr .";
-		$data_content .= "Renvoie le contenu de l'article formaté en markdown et surtout utilise les balises Hn (h2, h3, h4) mais pas de H1.";
-		$data_content .= "Ne mets pas de retours à la ligne dans le contenu de l\'article car sinon il ne sera pas au format json.";
-		$data_content .= "Tu peux ajouter des \n pour les retours à la ligne.";
+		$data_content = "Écris un article intéressant et documenté sur le sujet que tu voudras. ";
+		$data_content .= "Renvoie le contenu de l'article formaté en markdown sans titre principal (h1) car il y en a déjà un sur ma page.";
 
 		// Configuration des données envoyées.
 		$data = [
-			"model"         => "gpt-4o-mini", // "gpt-4"
+			"model"         => "gpt-4o", // "gpt-4o-mini"
 			"messages"      => [
 				[
 					"role"    => "system",
@@ -149,7 +147,7 @@ class wp_ai_info
 				]
 			],
 			"function_call" => [ "name" => "create_blog_article" ],
-			"temperature"   => 0.1,
+			"temperature"   => 0.1, // https://platform.openai.com/docs/api-reference/chat/create#chat-create-temperature
 			// "max_tokens"    => 2000 // https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
 			"max_completion_tokens"    => 2000
 		];
@@ -210,6 +208,7 @@ class wp_ai_info
 			}
 			else {
 				gwplog( 'error : Aucune réponse valide de l\'API' );
+				gwplog( $response_data );
 			}
 		}
 
