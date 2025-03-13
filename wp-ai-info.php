@@ -31,7 +31,7 @@ class wp_ai_info
 
 		add_action( 'init', [
 			$this,
-			'wp_ai_info_init'
+			'init'
 		], 20 );
 
 		add_action( 'admin_init', [
@@ -81,9 +81,9 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function wp_ai_info_init() {
+	public function init() {
 
-		// gwplog( 'wp_ai_info_init()' );
+		// gwplog( 'init()' );
 
 		$timestamp_debut = time();
 
@@ -112,8 +112,9 @@ class wp_ai_info
 
 		// Configuration des données envoyées.
 		$data = [
-			"model"         => "gpt-4o", // "gpt-4o-mini"
-			"messages"      => [
+			"model"                 => "gpt-4o",
+			// "gpt-4o-mini"
+			"messages"              => [
 				[
 					"role"    => "system",
 					"content" => "Tu es un rédacteur de blog qui écrit des articles informatifs détaillés et bien structurés d'environ mille mots."
@@ -123,7 +124,7 @@ class wp_ai_info
 					"content" => $data_content
 				]
 			],
-			"functions"     => [
+			"functions"             => [
 				[
 					"name"        => "create_blog_article",
 					"description" => "Crée un article de blog en français avec un titre et un contenu.",
@@ -146,10 +147,11 @@ class wp_ai_info
 					]
 				]
 			],
-			"function_call" => [ "name" => "create_blog_article" ],
-			"temperature"   => 0.1, // https://platform.openai.com/docs/api-reference/chat/create#chat-create-temperature
+			"function_call"         => [ "name" => "create_blog_article" ],
+			"temperature"           => 0.1,
+			// https://platform.openai.com/docs/api-reference/chat/create#chat-create-temperature
 			// "max_tokens"    => 2000 // https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_tokens
-			"max_completion_tokens"    => 2000
+			"max_completion_tokens" => 2000
 		];
 
 		$ch = curl_init( $url_open_api_endpoint );
@@ -177,7 +179,7 @@ class wp_ai_info
 				gwplog( 'article_json = ' );
 				gwplog( $article_json );
 
-				if ( self::is_json( $article_json ) ) {
+				if ( $this->is_json( $article_json ) ) {
 					$article = json_decode( $article_json );
 
 					$Parsedown = new Parsedown();
@@ -237,7 +239,7 @@ class wp_ai_info
 	 * @param string $string
 	 * @return bool
 	 */
-	private static function is_json( $string ) {
+	private function is_json( $string ) {
 		// Vérifier que $data est bien une chaîne
 		if ( ! is_string( $string ) ) {
 			return false;
@@ -261,7 +263,7 @@ class wp_ai_info
 			'wp_ai_info_options',   // Slug de la page
 			[
 				$this,
-				'wp_ai_info_options_page'
+				'generate_options_page'
 			]   // Fonction callback
 		);
 	}
@@ -271,21 +273,48 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function wp_ai_info_options_page() {
+	public function generate_options_page() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Vous n\'avez pas les permissions suffisantes pour accéder à cette page.' );
 		}
 		?>
 		<div class="wrap">
 			<h1><?php esc_html_e( 'WP AI INFO - Settings', 'mon-plugin-textdomain' ); ?></h1>
-			<form method="post" action="options.php">
-				<?php
-				settings_fields( 'wp_ai_info_options_group' );
-				do_settings_sections( 'wp_ai_info_options' );
-				submit_button();
-				?>
-			</form>
+			<h2 class="nav-tab-wrapper">
+				<a href="?page=wp_ai_info_options&tab=general" class="nav-tab <?php echo ( ! isset( $_GET['tab'] ) || $_GET['tab'] == 'general' ) ? 'nav-tab-active' : ''; ?>">Général</a>
+				<a href="?page=wp_ai_info_options&tab=prompt" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'prompt' ) ? 'nav-tab-active' : ''; ?>">Génération d'Article</a>
+			</h2>
+			<?php
+			$tab = $_GET['tab'] ?? 'general';
+			if ( $tab == 'general' ) {
+				$this->display_general_settings();
+			}
+			elseif ( $tab == 'prompt' ) {
+				$this->display_prompt_settings();
+			}
+			?>
+
 		</div>
+		<?php
+	}
+
+	public function display_general_settings() {
+		?>
+		<form method="post" action="options.php">
+			<?php
+			settings_fields( 'wp_ai_info_options_group' );
+			do_settings_sections( 'wp_ai_info_options' );
+			submit_button();
+			?>
+		</form>
+		<?php
+	}
+
+	public function display_prompt_settings() {
+		?>
+		<form method="post" action="options.php">
+
+		</form>
 		<?php
 	}
 
@@ -310,9 +339,14 @@ class wp_ai_info
 		], 'wp_ai_info_options' );
 
 		// Ajout d'un champ dans la section.
-		add_settings_field( 'wp_ai_info_option', '<label for="wp_ai_info_option_0">OpenAI API KEY</label>', [
+		add_settings_field( 'wp_ai_info_option', '<label for="wp_ai_info_option_api_key">OpenAI API KEY</label>', [
 			$this,
 			'wp_ai_info_option_callback'
+		], 'wp_ai_info_options', 'wp_ai_info_section_id' );
+
+		add_settings_field( 'my_prompt', '<label for="wp_ai_info_option_api_key">Prompt</label>', [
+			$this,
+			'prompt_callback'
 		], 'wp_ai_info_options', 'wp_ai_info_section_id' );
 	}
 
@@ -337,10 +371,25 @@ class wp_ai_info
 			$value = self::decrypt_value( $encrypted_value );
 		}
 		?>
-		<input type="text" id="wp_ai_info_option_0" name="wp_ai_info_option" value="<?php echo esc_attr( $value ); ?>" class="regular-text" />
+		<input type="text" id="wp_ai_info_option_api_key" name="wp_ai_info_option" value="<?php echo esc_attr( $value ); ?>" class="regular-text" />
 		<?php
 	}
 
+	/**
+	 * Callback pour le champ de l'option dans la page de settings en BO.
+	 *
+	 * @return void
+	 */
+	public function prompt_callback() {
+		$encrypted_value = get_option( 'wp_ai_info_option_prompt' );
+		$value = '';
+		if ( ! empty( $encrypted_value ) ) {
+			$value = self::decrypt_value( $encrypted_value );
+		}
+		?>
+		<textarea id="wp_ai_info_option_prompt" name="wp_ai_info_option_prompt" class="regular-text"><?php echo esc_attr( $value ); ?></textarea>
+		<?php
+	}
 
 	public function wp_ai_info_add_metabox() {
 		add_meta_box( 'wp_ai_info_metabox', 'Informations WP AI Info', [
