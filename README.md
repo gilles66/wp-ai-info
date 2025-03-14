@@ -22,4 +22,4 @@ Pour utiliser ce plugin vous devez disposer d'un compte et d'une [API KEY](https
 1. **Placez-vous** dans le dossier `wp-content/plugins/` de votre installation WordPress.
 2. **Téléchargez** ou clonez ce dépôt. Le dossier du plugin se nomme `wp-ai-info`.
 3. **Activez** le plugin.
-4. **Rendez-vous** à la page d'admin du plugin à l'url /wp-admin/options-general.php?page=wp-ai-info-options
+4. **Rendez-vous** à la page d'admin du plugin à l'url `/wp-admin/options-general.php?page=wp-ai-info-options`
