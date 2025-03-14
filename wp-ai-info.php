@@ -8,9 +8,7 @@ Author URI: https://gillesdumas.com
 */
 
 require 'vendor/autoload.php';
-require_once( 'debug.php' );
-
-use Carbon\Carbon;
+require_once 'debug.php';
 
 new wp_ai_info;
 
@@ -33,11 +31,6 @@ class wp_ai_info
 	 * Constructor.
 	 */
 	public function __construct() {
-
-		add_action( 'init', [
-			$this,
-			'init'
-		], 10 );
 
 		add_action( 'admin_init', [
 			$this,
@@ -76,10 +69,6 @@ class wp_ai_info
 		}
 
 		$timestamp_debut = time();
-
-		// Carbon::setLocale( 'fr' );
-		// $date = Carbon::now();
-		// $date_fr = $date->translatedFormat( 'l d F Y' );
 
 		$encrypted_value = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
 		$api_key = '';
@@ -284,13 +273,6 @@ class wp_ai_info
 	public function sanitize_prompt( $input ) {
 		return sanitize_text_field( $input );
 	}
-
-	/**
-	 * Appel à l'API OpenAI pour créer un article.
-	 *
-	 * @return void
-	 */
-	public function init() {}
 
 	/**
 	 * Ajout du menu dans l'administration.
@@ -499,14 +481,3 @@ class wp_ai_info
 		echo '</table>';
 	}
 }
-
-add_action( 'init', function () {
-	if ( ! empty( $_POST ) ) {
-
-		// pre( $_POST, 'lightblue' );
-		// gwplog( $_POST );
-		// error_log( print_r( $_POST, true ) );
-	}
-}, 20 );
-
-// pre( $_POST, 'orange' );
