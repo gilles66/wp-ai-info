@@ -24,6 +24,9 @@ class wp_ai_info
 	// Clé de chiffrement (doit être une chaîne de 32 caractères pour AES-256)
 	const ENCRYPTION_KEY = 'Y0AT8xhF8xAm0ZDAxThkuFkrsrMrnxzs';
 
+	// Se retrouvera dans l'url de la page
+	const SLUG_PAGE = 'wp-ai-info-options';
+
 	/**
 	 * Constructor.
 	 */
@@ -32,7 +35,7 @@ class wp_ai_info
 		add_action( 'init', [
 			$this,
 			'init'
-		], 20 );
+		], 10 );
 
 		add_action( 'admin_init', [
 			$this,
@@ -41,7 +44,7 @@ class wp_ai_info
 
 		add_action( 'admin_menu', [
 			$this,
-			'wp_ai_info_menu_options'
+			'add_option_page'
 		] );
 
 		add_action( 'add_meta_boxes', [
@@ -77,6 +80,16 @@ class wp_ai_info
 	}
 
 	/**
+	 * Sanitize le prompt, puis la sauvegarde.
+	 *
+	 * @param string $input
+	 * @return string
+	 */
+	public function sanitize_prompt( $input ) {
+		return sanitize_text_field( $input );
+	}
+
+	/**
 	 * Appel à l'API OpenAI pour créer un article.
 	 *
 	 * @return void
@@ -84,10 +97,9 @@ class wp_ai_info
 	public function init() {
 
 		// gwplog( 'init()' );
+		pre( $_POST, 'lightblue' );
 
-		$timestamp_debut = time();
-
-		if ( ! isset( $_GET['inserer-article-ai'] ) ) {
+		if ( ! isset( $_POST['inserer-article-ai'] ) ) {
 			return;
 		}
 
@@ -95,11 +107,13 @@ class wp_ai_info
 			return;
 		}
 
+		$timestamp_debut = time();
+
 		Carbon::setLocale( 'fr' );
 		$date = Carbon::now();
 		$date_fr = $date->translatedFormat( 'l d F Y' );
 
-		$encrypted_value = get_option( 'wp_ai_info_option' );
+		$encrypted_value = get_option( 'option_api_key' );
 		$api_key = '';
 		if ( ! empty( $encrypted_value ) ) {
 			$api_key = self::decrypt_value( $encrypted_value );
@@ -107,7 +121,9 @@ class wp_ai_info
 
 		$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
-		$data_content = "Écris un article intéressant et documenté sur le sujet que tu voudras. ";
+		$prompt = get_option( 'option_prompt' );
+		$data_content = $prompt;
+		// $data_content = "Écris un article intéressant et documenté sur le sujet que tu voudras. ";
 		$data_content .= "Renvoie le contenu de l'article formaté en markdown sans titre principal (h1) car il y en a déjà un sur ma page.";
 
 		// Configuration des données envoyées.
@@ -201,6 +217,7 @@ class wp_ai_info
 					 */
 					update_post_meta( $result_insert, 'wp_ai_info_prompt', $data_content );
 					update_post_meta( $result_insert, 'wp_ai_info_data', $data );
+					update_post_meta( $result_insert, 'wp_ai_info_openai_response', $response );
 					update_post_meta( $result_insert, 'wp_ai_info_temps_execution', time() - $timestamp_debut );
 				}
 				else {
@@ -256,11 +273,11 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function wp_ai_info_menu_options() {
+	public function add_option_page() {
 		add_options_page( 'Settings - WP AI INFO', // Titre de la page
 			'WP AI Info',           // Titre du menu
 			'manage_options',       // Capacité requise
-			'wp_ai_info_options',   // Slug de la page
+			self::SLUG_PAGE,   // Slug de la page
 			[
 				$this,
 				'generate_options_page'
@@ -279,13 +296,13 @@ class wp_ai_info
 		}
 		?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'WP AI INFO - Settings', 'mon-plugin-textdomain' ); ?></h1>
+			<h1><?php esc_html_e( 'WP AI INFO', 'mon-plugin-textdomain' ); ?></h1>
 			<h2 class="nav-tab-wrapper">
-				<a href="?page=wp_ai_info_options&tab=general" class="nav-tab <?php echo ( ! isset( $_GET['tab'] ) || $_GET['tab'] == 'general' ) ? 'nav-tab-active' : ''; ?>">Général</a>
-				<a href="?page=wp_ai_info_options&tab=prompt" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'prompt' ) ? 'nav-tab-active' : ''; ?>">Génération d'Article</a>
+				<a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=prompt" class="nav-tab <?php echo ( ! isset( $_GET['tab'] ) || $_GET['tab'] == 'prompt' ) ? 'nav-tab-active' : ''; ?>">Génération d'article</a>
+				<a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=general" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'general' ) ? 'nav-tab-active' : ''; ?>">Settings</a>
 			</h2>
 			<?php
-			$tab = $_GET['tab'] ?? 'general';
+			$tab = $_GET['tab'] ?? 'prompt';
 			if ( $tab == 'general' ) {
 				$this->display_general_settings();
 			}
@@ -293,7 +310,6 @@ class wp_ai_info
 				$this->display_prompt_settings();
 			}
 			?>
-
 		</div>
 		<?php
 	}
@@ -302,8 +318,8 @@ class wp_ai_info
 		?>
 		<form method="post" action="options.php">
 			<?php
-			settings_fields( 'wp_ai_info_options_group' );
-			do_settings_sections( 'wp_ai_info_options' );
+			settings_fields( 'my_options_group_settings' );
+			do_settings_sections( 'page_settings' );
 			submit_button();
 			?>
 		</form>
@@ -313,7 +329,11 @@ class wp_ai_info
 	public function display_prompt_settings() {
 		?>
 		<form method="post" action="options.php">
-
+			<?php
+			settings_fields( 'my_options_group_prompt' );
+			do_settings_sections( 'page_prompt' );
+			submit_button( 'Générer l\'article' );
+			?>
 		</form>
 		<?php
 	}
@@ -324,8 +344,12 @@ class wp_ai_info
 	 * @return void
 	 */
 	public function wp_ai_info_register_settings() {
+
+		/**
+		 * Le champ api key.
+		 */
 		// Enregistrement du réglage avec callback de sanitization.
-		register_setting( 'wp_ai_info_options_group', 'wp_ai_info_option', [
+		register_setting( 'my_options_group_settings', 'option_api_key', [
 			'sanitize_callback' => [
 				$this,
 				'sanitize_option'
@@ -333,21 +357,38 @@ class wp_ai_info
 		] );
 
 		// Ajout d'une section sur la page d'options.
-		add_settings_section( 'wp_ai_info_section_id', 'Titre de la section', [
+		add_settings_section( 'section_id_settings', 'Settings', [
 			$this,
-			'wp_ai_info_section_callback'
-		], 'wp_ai_info_options' );
+			'display_section_apikey'
+		], 'page_settings' );
 
 		// Ajout d'un champ dans la section.
-		add_settings_field( 'wp_ai_info_option', '<label for="wp_ai_info_option_api_key">OpenAI API KEY</label>', [
+		add_settings_field( 'wp_ai_info_option', '<label for="option_api_key">OpenAI API KEY</label>', [
 			$this,
-			'wp_ai_info_option_callback'
-		], 'wp_ai_info_options', 'wp_ai_info_section_id' );
+			'display_input_apikey'
+		], 'page_settings', 'section_id_settings' );
 
-		add_settings_field( 'my_prompt', '<label for="wp_ai_info_option_api_key">Prompt</label>', [
+		/**
+		 * Le champ prompt.
+		 */
+		// Enregistrement du réglage avec callback de sanitization.
+		register_setting( 'my_options_group_prompt', 'option_prompt', [
+			'sanitize_callback' => [
+				$this,
+				'sanitize_prompt'
+			]
+		] );
+
+		// Ajout d'une section sur la page d'options.
+		add_settings_section( 'section_id_prompt', 'Génération d\'un article', [
 			$this,
-			'prompt_callback'
-		], 'wp_ai_info_options', 'wp_ai_info_section_id' );
+			'display_section_prompt'
+		], 'page_prompt' );
+
+		add_settings_field( 'my_prompt', '<label for="option_prompt">Prompt</label>', [
+			$this,
+			'display_input_prompt'
+		], 'page_prompt', 'section_id_prompt' );
 	}
 
 	/**
@@ -355,8 +396,17 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function wp_ai_info_section_callback() {
+	public function display_section_apikey() {
 		echo '<p>Configurez les options de votre plugin ici.</p>';
+	}
+
+	/**
+	 * Callback pour la section d'options.
+	 *
+	 * @return void
+	 */
+	public function display_section_prompt() {
+		echo '<p>Saisissez votre prompt ci-dessous.</p>';
 	}
 
 	/**
@@ -364,14 +414,14 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function wp_ai_info_option_callback() {
-		$encrypted_value = get_option( 'wp_ai_info_option' );
+	public function display_input_apikey() {
+		$encrypted_value = get_option( 'option_api_key' );
 		$value = '';
 		if ( ! empty( $encrypted_value ) ) {
 			$value = self::decrypt_value( $encrypted_value );
 		}
 		?>
-		<input type="text" id="wp_ai_info_option_api_key" name="wp_ai_info_option" value="<?php echo esc_attr( $value ); ?>" class="regular-text" />
+		<input type="text" id="option_api_key" name="option_api_key" value="<?php echo esc_attr( $value ); ?>" class="large-text" />
 		<?php
 	}
 
@@ -380,14 +430,11 @@ class wp_ai_info
 	 *
 	 * @return void
 	 */
-	public function prompt_callback() {
-		$encrypted_value = get_option( 'wp_ai_info_option_prompt' );
-		$value = '';
-		if ( ! empty( $encrypted_value ) ) {
-			$value = self::decrypt_value( $encrypted_value );
-		}
+	public function display_input_prompt() {
+		$value = get_option( 'option_prompt' );
 		?>
-		<textarea id="wp_ai_info_option_prompt" name="wp_ai_info_option_prompt" class="regular-text"><?php echo esc_attr( $value ); ?></textarea>
+		<input type="hidden" name="inserer-article-ai" value="1" />
+		<textarea id="option_prompt" name="option_prompt" class="large-text"><?php echo sanitize_textarea_field( $value ); ?></textarea>
 		<?php
 	}
 
@@ -417,7 +464,6 @@ class wp_ai_info
 
 					echo '<pre style="background-color:aliceblue;white-space:pre-wrap;padding:15px;font-size:13px;border-radius:5px;">';
 					print_r( is_serialized( $value ) ? unserialize( $value ) : $value );
-
 					echo '</pre>';
 				}
 				echo '</td>';
@@ -427,3 +473,14 @@ class wp_ai_info
 		echo '</table>';
 	}
 }
+
+add_action( 'init', function () {
+	if ( ! empty( $_POST ) ) {
+
+		// pre( $_POST, 'lightblue' );
+		// gwplog( $_POST );
+		// error_log( print_r( $_POST, true ) );
+	}
+}, 20 );
+
+// pre( $_POST, 'orange' );
