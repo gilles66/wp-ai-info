@@ -8,7 +8,6 @@ Author URI: https://gillesdumas.com
 */
 
 require 'vendor/autoload.php';
-require_once( '.env.php' );
 require_once( 'debug.php' );
 
 use Carbon\Carbon;
@@ -21,11 +20,14 @@ new wp_ai_info;
 class wp_ai_info
 {
 
-	// Clé de chiffrement (doit être une chaîne de 32 caractères pour AES-256)
+	// Clé de chiffrement (doit être une chaîne de 32 caractères pour AES-256).
 	const ENCRYPTION_KEY = 'Y0AT8xhF8xAm0ZDAxThkuFkrsrMrnxzs';
 
-	// Se retrouvera dans l'url de la page
+	// Se retrouvera dans l'url de la page.
 	const SLUG_PAGE = 'wp-ai-info-options';
+
+	// Le préfixe de toutes les options du plugin.
+	const PREFIX_OPTION_NAME = 'wp_ai_info_';
 
 	/**
 	 * Constructor.
@@ -51,57 +53,23 @@ class wp_ai_info
 			$this,
 			'wp_ai_info_add_metabox'
 		] );
+
+		/**
+		 * Appel à openAI lorsque l'on enregistre le prompt.
+		 */
+		add_action( 'update_option_wp_ai_info_option_prompt', [
+			$this,
+			'make_openai_call'
+		], 10, 3 );
 	}
 
 	/**
-	 * Sanitize la valeur, puis chiffre l'option avant sauvegarde.
+	 * Makes a call to openAI API and inserts a WordPress post.
 	 *
-	 * @param string $input
-	 * @return string
+	 * @return null
 	 */
-	public function sanitize_option( $input ) {
-		$clean = sanitize_text_field( $input );
-		return self::encrypt_value( $clean );
-	}
-
-	/**
-	 * Chiffre une valeur avec AES-256-CBC.
-	 *
-	 * @param string $data
-	 * @return string
-	 */
-	private static function encrypt_value( $data ) {
-		$cipher_method = 'AES-256-CBC';
-		$iv_length = openssl_cipher_iv_length( $cipher_method );
-		$iv = openssl_random_pseudo_bytes( $iv_length );
-		$encrypted = openssl_encrypt( $data, $cipher_method, self::ENCRYPTION_KEY, 0, $iv );
-		// Stocke l'IV avec les données chiffrées, puis encode en base64.
-		return base64_encode( $iv . $encrypted );
-	}
-
-	/**
-	 * Sanitize le prompt, puis la sauvegarde.
-	 *
-	 * @param string $input
-	 * @return string
-	 */
-	public function sanitize_prompt( $input ) {
-		return sanitize_text_field( $input );
-	}
-
-	/**
-	 * Appel à l'API OpenAI pour créer un article.
-	 *
-	 * @return void
-	 */
-	public function init() {
-
-		// gwplog( 'init()' );
-		pre( $_POST, 'lightblue' );
-
-		if ( ! isset( $_POST['inserer-article-ai'] ) ) {
-			return;
-		}
+	public function make_openai_call() {
+		gwplog( 'make_openai_call()' );
 
 		if ( isset( $GLOBALS['wp_ai_info_init_done'] ) ) {
 			return;
@@ -109,11 +77,11 @@ class wp_ai_info
 
 		$timestamp_debut = time();
 
-		Carbon::setLocale( 'fr' );
-		$date = Carbon::now();
-		$date_fr = $date->translatedFormat( 'l d F Y' );
+		// Carbon::setLocale( 'fr' );
+		// $date = Carbon::now();
+		// $date_fr = $date->translatedFormat( 'l d F Y' );
 
-		$encrypted_value = get_option( 'option_api_key' );
+		$encrypted_value = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
 		$api_key = '';
 		if ( ! empty( $encrypted_value ) ) {
 			$api_key = self::decrypt_value( $encrypted_value );
@@ -121,9 +89,8 @@ class wp_ai_info
 
 		$url_open_api_endpoint = "https://api.openai.com/v1/chat/completions";
 
-		$prompt = get_option( 'option_prompt' );
+		$prompt = get_option( self::PREFIX_OPTION_NAME . 'option_prompt' );
 		$data_content = $prompt;
-		// $data_content = "Écris un article intéressant et documenté sur le sujet que tu voudras. ";
 		$data_content .= "Renvoie le contenu de l'article formaté en markdown sans titre principal (h1) car il y en a déjà un sur ma page.";
 
 		// Configuration des données envoyées.
@@ -209,16 +176,27 @@ class wp_ai_info
 
 					// https://developer.wordpress.org/reference/functions/wp_insert_post/
 					$result_insert = wp_insert_post( $args_insert );
-					pre( $result_insert );
-					// @todo ici ajouter un test pour vérifier que $result_insert est bien un entier.
+					// pre( $result_insert );
 
-					/**
-					 * Les post_meta.
-					 */
-					update_post_meta( $result_insert, 'wp_ai_info_prompt', $data_content );
-					update_post_meta( $result_insert, 'wp_ai_info_data', $data );
-					update_post_meta( $result_insert, 'wp_ai_info_openai_response', $response );
-					update_post_meta( $result_insert, 'wp_ai_info_temps_execution', time() - $timestamp_debut );
+					if ( is_integer( $result_insert ) ) {
+						/**
+						 * Les post_meta.
+						 */
+						update_post_meta( $result_insert, 'wp_ai_info_prompt', $data_content );
+						update_post_meta( $result_insert, 'wp_ai_info_data', $data );
+						update_post_meta( $result_insert, 'wp_ai_info_openai_response', $response );
+						update_post_meta( $result_insert, 'wp_ai_info_temps_execution', time() - $timestamp_debut );
+
+						/**
+						 * Personnaliser le message de succès qui vaut par défaut "Settings saved".
+						 */
+						$msg = 'Article <a target="_blank" href="' . get_permalink( $result_insert ) . '">' . get_post_field( 'post_title', $result_insert ) . '</a> créé.';
+						add_settings_error( self::PREFIX_OPTION_NAME . 'option_prompt', 'option-prompt-success', $msg, 'success' );
+					}
+					else {
+						$msg = 'L\'article n\'a pas pu être inséré !';
+						add_settings_error( self::PREFIX_OPTION_NAME . 'option_prompt', 'option-prompt-error', $msg );
+					}
 				}
 				else {
 					echo 'Le format de retour de "arguments" n\'est pas du json';
@@ -228,6 +206,9 @@ class wp_ai_info
 			else {
 				gwplog( 'error : Aucune réponse valide de l\'API' );
 				gwplog( $response_data );
+				if ( is_array( $response_data ) && isset( $response_data['error'] ) ) {
+					add_settings_error( self::PREFIX_OPTION_NAME . 'option_prompt', 'option-prompt-error', $response_data['error']['message'] );
+				}
 			}
 		}
 
@@ -267,6 +248,49 @@ class wp_ai_info
 		// Vérifie s'il y a eu une erreur lors du décodage
 		return ( json_last_error() === JSON_ERROR_NONE );
 	}
+
+	/**
+	 * Sanitize la valeur, puis chiffre l'option avant sauvegarde.
+	 *
+	 * @param string $input
+	 * @return string
+	 */
+	public function sanitize_option( $input ) {
+		$clean = sanitize_text_field( $input );
+		return self::encrypt_value( $clean );
+	}
+
+	/**
+	 * Chiffre une valeur avec AES-256-CBC.
+	 *
+	 * @param string $data
+	 * @return string
+	 */
+	private static function encrypt_value( $data ) {
+		$cipher_method = 'AES-256-CBC';
+		$iv_length = openssl_cipher_iv_length( $cipher_method );
+		$iv = openssl_random_pseudo_bytes( $iv_length );
+		$encrypted = openssl_encrypt( $data, $cipher_method, self::ENCRYPTION_KEY, 0, $iv );
+		// Stocke l'IV avec les données chiffrées, puis encode en base64.
+		return base64_encode( $iv . $encrypted );
+	}
+
+	/**
+	 * Sanitize le prompt, puis la sauvegarde.
+	 *
+	 * @param string $input
+	 * @return string
+	 */
+	public function sanitize_prompt( $input ) {
+		return sanitize_text_field( $input );
+	}
+
+	/**
+	 * Appel à l'API OpenAI pour créer un article.
+	 *
+	 * @return void
+	 */
+	public function init() {}
 
 	/**
 	 * Ajout du menu dans l'administration.
@@ -348,8 +372,9 @@ class wp_ai_info
 		/**
 		 * Le champ api key.
 		 */
+
 		// Enregistrement du réglage avec callback de sanitization.
-		register_setting( 'my_options_group_settings', 'option_api_key', [
+		register_setting( 'my_options_group_settings', self::PREFIX_OPTION_NAME . 'option_api_key', [
 			'sanitize_callback' => [
 				$this,
 				'sanitize_option'
@@ -371,8 +396,9 @@ class wp_ai_info
 		/**
 		 * Le champ prompt.
 		 */
+
 		// Enregistrement du réglage avec callback de sanitization.
-		register_setting( 'my_options_group_prompt', 'option_prompt', [
+		register_setting( 'my_options_group_prompt', self::PREFIX_OPTION_NAME . 'option_prompt', [
 			'sanitize_callback' => [
 				$this,
 				'sanitize_prompt'
@@ -415,13 +441,13 @@ class wp_ai_info
 	 * @return void
 	 */
 	public function display_input_apikey() {
-		$encrypted_value = get_option( 'option_api_key' );
+		$encrypted_value = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
 		$value = '';
 		if ( ! empty( $encrypted_value ) ) {
 			$value = self::decrypt_value( $encrypted_value );
 		}
 		?>
-		<input type="text" id="option_api_key" name="option_api_key" value="<?php echo esc_attr( $value ); ?>" class="large-text" />
+		<input type="text" id="option_api_key" name="<?php echo self::PREFIX_OPTION_NAME; ?>option_api_key" value="<?php echo esc_attr( $value ); ?>" class="large-text" />
 		<?php
 	}
 
@@ -431,10 +457,10 @@ class wp_ai_info
 	 * @return void
 	 */
 	public function display_input_prompt() {
-		$value = get_option( 'option_prompt' );
+		$value = get_option( self::PREFIX_OPTION_NAME . 'option_prompt' );
 		?>
 		<input type="hidden" name="inserer-article-ai" value="1" />
-		<textarea id="option_prompt" name="option_prompt" class="large-text"><?php echo sanitize_textarea_field( $value ); ?></textarea>
+		<textarea id="option_prompt" name="<?php echo self::PREFIX_OPTION_NAME; ?>option_prompt" class="large-text"><?php echo sanitize_textarea_field( $value ); ?></textarea>
 		<?php
 	}
 
