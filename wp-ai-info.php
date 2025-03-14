@@ -7,7 +7,7 @@ Author: Gilles Dumas
 Author URI: https://gillesdumas.com
 */
 
-require 'vendor/autoload.php';
+require_once 'Parsedown.php';
 require_once 'debug.php';
 
 new wp_ai_info;
@@ -341,6 +341,8 @@ class wp_ai_info
 			submit_button( 'Générer l\'article' );
 			?>
 		</form>
+		<p>La génération d'un article via appel à l'API de OpenAI prend généralement entre 10 et 20 secondes.</p>
+		<p>Si vous validez la génération de l'article sans avoir modifié le prompt alors rien ne se passera.</p>
 		<?php
 	}
 
