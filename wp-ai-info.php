@@ -387,32 +387,42 @@ class wp_ai_info
                     // $file_to_encode = wp_get_attachment_image_url($attachment_id, 'thumbnail');
                     // gwplog( '$file_to_encode =' . $file_to_encode );
 
-                    // Lecture et encodage
+                    // Lecture et encodage de l'image en base64 pour inclusion inline
                     $file_content = file_get_contents( $file_to_encode );
                     $mime_type = wp_check_filetype( $file_to_encode )['type'] ?? 'application/octet-stream';
                     $base64 = base64_encode( $file_content );
                     $data_uri = 'data:' . $mime_type . ';base64,' . $base64;
-                    // nettoyage du fichier temporaire
+                    // Nettoyage du fichier temporaire si nécessaire
                     if ( isset( $saved['path'] ) && $file_to_encode !== $file_path ) {
-                        @unlink( $saved['path'] );
+                        @unlink( $file_to_encode );
                     }
+
                     // Clé API
                     $encrypted_value = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
                     $api_key = '';
                     if ( ! empty( $encrypted_value ) ) {
                         $api_key = self::decrypt_value( $encrypted_value );
                     }
-                    // Préparer le prompt avec l'image intégrée en markdown
+
+                    // Préparer le prompt avec l'image inline
                     $markdown_img = '![image](' . $data_uri . ')';
-                    $user_prompt = $markdown_img . "\n\nDécris cette image et propose un texte de description adapté pour le champ Description de la bibliothèque WordPress (max 15 mots).";
-                    $data = [
-                        'model'       => 'gpt-4o',
-                        'messages'    => [
-                            ['role' => 'system', 'content' => "Tu es un assistant expert en description d'images."],
-                            ['role' => 'user',   'content' => $user_prompt],
+                    $messages = [
+                        [
+                            'role'    => 'system',
+                            'content' => "Tu es un assistant multimodal expert en description d'images. Donne une description précise en français, 15 mots maximum, sans ajouter d'informations non visibles."
                         ],
-                        'temperature' => 0.1,
-                        'max_tokens'  => 500,
+                        [
+                            'role'    => 'user',
+                            'content' => "Voici l'image :\n\n" . $markdown_img
+                        ]
+                    ];
+
+                    // Appel à l'API Chat Completions
+                    $payload = [
+                        'model'       => 'gpt-4o-mini',
+                        'messages'    => $messages,
+                        'temperature' => 0.0,
+                        'max_tokens'  => 60,
                     ];
                     $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
                     curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
@@ -421,30 +431,26 @@ class wp_ai_info
                         'Content-Type: application/json',
                         'Authorization: Bearer ' . $api_key
                     ] );
-                    curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
+                    curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $payload ) );
                     $response = curl_exec( $ch );
                     if ( curl_errno( $ch ) ) {
                         add_settings_error( 'wp_ai_info_image', 'curl_error', curl_error( $ch ), 'error' );
-                    }
-                    else {
+                    } else {
                         $response_data = json_decode( $response, true );
                         if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
-                            $description = $response_data['choices'][0]['message']['content'];
+                            $description = trim( $response_data['choices'][0]['message']['content'] );
                             $result = wp_update_post( [
-                                    'ID'           => $attachment_id,
-                                    'post_content' => $description
+                                'ID'           => $attachment_id,
+                                'post_content' => $description
                             ], true );
                             if ( is_wp_error( $result ) ) {
                                 add_settings_error( 'wp_ai_info_image', 'update_failed', $result->get_error_message(), 'error' );
-                            }
-                            else {
+                            } else {
                                 add_settings_error( 'wp_ai_info_image', 'update_success', 'Description mise à jour pour l\'ID ' . $attachment_id . '.', 'success' );
                             }
-                        }
-                        elseif ( isset( $response_data['error'] ) ) {
+                        } elseif ( isset( $response_data['error'] ) ) {
                             add_settings_error( 'wp_ai_info_image', 'api_error', $response_data['error']['message'], 'error' );
-                        }
-                        else {
+                        } else {
                             add_settings_error( 'wp_ai_info_image', 'api_error', 'Réponse invalide de l\'API.', 'error' );
                         }
                     }
