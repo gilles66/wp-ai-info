@@ -372,7 +372,11 @@ class wp_ai_info
                     $file_to_encode = $file_path;
                     $editor = wp_get_image_editor( $file_path );
                     if ( ! is_wp_error( $editor ) ) {
-                        $editor->resize( 256, 256, false );
+                        // Réduction pour limiter les tokens : JPEG 128x128 qualité 30
+                        if ( method_exists( $editor, 'set_quality' ) ) {
+                            $editor->set_quality( 30 );
+                        }
+                        $editor->resize( 128, 128, false );
                         $saved = $editor->save();
                         if ( ! is_wp_error( $saved ) && ! empty( $saved['path'] ) ) {
                             $file_to_encode = $saved['path'];
@@ -398,29 +402,24 @@ class wp_ai_info
                     if ( ! empty( $encrypted_value ) ) {
                         $api_key = self::decrypt_value( $encrypted_value );
                     }
-                    // Préparer le prompt
-                    $prompt = 'Décris cette miniature d\'image (256x256) encodée en base64 et propose un texte de description d\'une dizaine de mot adapté pour la mise à jour du champ Description de la bibliothèque WordPress. Image : ' . $data_uri;
+                    // Préparer le prompt avec l'image intégrée en markdown
+                    $markdown_img = '![image](' . $data_uri . ')';
+                    $user_prompt = $markdown_img . "\n\nDécris cette image et propose un texte de description adapté pour le champ Description de la bibliothèque WordPress (max 15 mots).";
                     $data = [
-                            'model'       => 'gpt-4o',
-                            'messages'    => [
-                                    [
-                                            'role'    => 'system',
-                                            'content' => 'Tu es un assistant expert en description d\'images.'
-                                    ],
-                                    [
-                                            'role'    => 'user',
-                                            'content' => $prompt
-                                    ]
-                            ],
-                            'temperature' => 0.1,
-                            'max_tokens'  => 500
+                        'model'       => 'gpt-4o',
+                        'messages'    => [
+                            ['role' => 'system', 'content' => "Tu es un assistant expert en description d'images."],
+                            ['role' => 'user',   'content' => $user_prompt],
+                        ],
+                        'temperature' => 0.1,
+                        'max_tokens'  => 500,
                     ];
                     $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
                     curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
                     curl_setopt( $ch, CURLOPT_POST, true );
                     curl_setopt( $ch, CURLOPT_HTTPHEADER, [
-                            'Content-Type: application/json',
-                            'Authorization: Bearer ' . $api_key
+                        'Content-Type: application/json',
+                        'Authorization: Bearer ' . $api_key
                     ] );
                     curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
                     $response = curl_exec( $ch );
