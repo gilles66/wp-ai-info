@@ -54,7 +54,90 @@ class wp_ai_info
 			$this,
 			'make_openai_call'
 		], 10, 3 );
-	}
+   }
+
+    /**
+     * Affiche les réglages pour la récupération d'informations d'une image.
+     */
+    public function display_image_settings() {
+        if ( isset( $_POST['submit_image'] ) && check_admin_referer( 'wp_ai_info_image_action', 'wp_ai_info_image_nonce' ) ) {
+            $attachment_id = intval( $_POST['attachment_id'] );
+            if ( ! $attachment_id ) {
+                add_settings_error( 'wp_ai_info_image', 'invalid_id', 'Merci de fournir un ID d\'image valide.', 'error' );
+            } else {
+                $url = wp_get_attachment_url( $attachment_id );
+                if ( ! $url ) {
+                    add_settings_error( 'wp_ai_info_image', 'invalid_id', 'Attachment ID invalide.', 'error' );
+                } else {
+                    $encrypted_value = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
+                    $api_key = '';
+                    if ( ! empty( $encrypted_value ) ) {
+                        $api_key = self::decrypt_value( $encrypted_value );
+                    }
+                    $prompt = 'Décris cette image et propose un texte de description adapté pour la mise à jour du champ Description de la bibliothèque WordPress. URL: ' . $url;
+                    $data = [
+                        'model'       => 'gpt-4o',
+                        'messages'    => [
+                            [
+                                'role'    => 'system',
+                                'content' => 'Tu es un assistant expert en description d\'images.'
+                            ],
+                            [
+                                'role'    => 'user',
+                                'content' => $prompt
+                            ]
+                        ],
+                        'temperature' => 0.1,
+                        'max_tokens'  => 500
+                    ];
+                    $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
+                    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+                    curl_setopt( $ch, CURLOPT_POST, true );
+                    curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+                        'Content-Type: application/json',
+                        'Authorization: Bearer ' . $api_key
+                    ] );
+                    curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
+                    $response = curl_exec( $ch );
+                    if ( curl_errno( $ch ) ) {
+                        add_settings_error( 'wp_ai_info_image', 'curl_error', curl_error( $ch ), 'error' );
+                    } else {
+                        $response_data = json_decode( $response, true );
+                        if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
+                            $description = $response_data['choices'][0]['message']['content'];
+                            $result      = wp_update_post( [
+                                'ID'           => $attachment_id,
+                                'post_content' => $description
+                            ], true );
+                            if ( is_wp_error( $result ) ) {
+                                add_settings_error( 'wp_ai_info_image', 'update_failed', $result->get_error_message(), 'error' );
+                            } else {
+                                add_settings_error( 'wp_ai_info_image', 'update_success', 'Description mise à jour pour l\'ID ' . $attachment_id . '.', 'success' );
+                            }
+                        } elseif ( isset( $response_data['error'] ) ) {
+                            add_settings_error( 'wp_ai_info_image', 'api_error', $response_data['error']['message'], 'error' );
+                        } else {
+                            add_settings_error( 'wp_ai_info_image', 'api_error', 'Réponse invalide de l\'API.', 'error' );
+                        }
+                    }
+                    curl_close( $ch );
+                }
+            }
+        }
+        settings_errors( 'wp_ai_info_image' );
+        ?>
+        <form method="post">
+            <?php wp_nonce_field( 'wp_ai_info_image_action', 'wp_ai_info_image_nonce' ); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="attachment_id">Attachment ID</label></th>
+                    <td><input type="number" name="attachment_id" id="attachment_id" class="small-text" required /></td>
+                </tr>
+            </table>
+            <?php submit_button( 'Get Image Info', 'primary', 'submit_image' ); ?>
+        </form>
+        <?php
+    }
 
 	/**
 	 * Makes a call to openAI API and inserts a WordPress post.
@@ -306,6 +389,7 @@ class wp_ai_info
 			<h2 class="nav-tab-wrapper">
 				<a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=prompt" class="nav-tab <?php echo ( ! isset( $_GET['tab'] ) || $_GET['tab'] == 'prompt' ) ? 'nav-tab-active' : ''; ?>">Génération d'article</a>
 				<a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=general" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'general' ) ? 'nav-tab-active' : ''; ?>">Settings</a>
+				<a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=image" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'image' ) ? 'nav-tab-active' : ''; ?>">Image</a>
 			</h2>
 			<?php
 			$tab = $_GET['tab'] ?? 'prompt';
@@ -314,6 +398,9 @@ class wp_ai_info
 			}
 			elseif ( $tab == 'prompt' ) {
 				$this->display_prompt_settings();
+			}
+			elseif ( $tab == 'image' ) {
+				$this->display_image_settings();
 			}
 			?>
 		</div>
