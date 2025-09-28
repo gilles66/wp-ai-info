@@ -365,7 +365,7 @@ class wp_ai_info
                 if ( ! $file_path || ! file_exists( $file_path ) ) {
                     add_settings_error( 'wp_ai_info_image', 'invalid_id', 'Attachment ID invalide ou fichier introuvable.', 'error' );
                 } else {
-                    // Générer miniature légère
+                    // Générer une miniature légère pour limiter le poids
                     $file_to_encode = $file_path;
                     $editor = wp_get_image_editor( $file_path );
                     if ( ! is_wp_error( $editor ) ) {
@@ -380,6 +380,7 @@ class wp_ai_info
                     }
                     gwplog( '$file_to_encode = ' . $file_to_encode );
 
+                    // Encodage base64
                     $file_content = file_get_contents( $file_to_encode );
                     $mime_type = wp_check_filetype( $file_to_encode )['type'] ?? 'image/jpeg';
                     $base64 = base64_encode( $file_content );
@@ -396,14 +397,19 @@ class wp_ai_info
                         $api_key = self::decrypt_value( $encrypted_value );
                     }
 
-                    // Préparer le prompt multimodal (texte + image)
+                    // Prompt multimodal
                     $messages = [
                             [
                                     "role" => "user",
                                     "content" => [
                                             [
                                                     "type" => "text",
-                                                    "text" => "Décris cette image en français, en 15 mots maximum. Ne rien inventer."
+                                                    "text" => "Décris cette image en JSON avec les champs suivants :
+                                - title : un titre court en français
+                                - description : une description factuelle en une phrase
+                                - caption : une légende concise
+                                - alt : un texte alternatif simple
+                                Réponds uniquement avec du JSON valide."
                                             ],
                                             [
                                                     "type" => "image_url",
@@ -419,8 +425,26 @@ class wp_ai_info
                             "model"       => "gpt-4o-mini",
                             "messages"    => $messages,
                             "temperature" => 0.0,
-                            "max_tokens"  => 60,
+                            "max_tokens"  => 200,
+                            "response_format" => [
+                                    "type" => "json_schema",
+                                    "json_schema" => [
+                                            "name" => "image_metadata",
+                                            "schema" => [
+                                                    "type" => "object",
+                                                    "properties" => [
+                                                            "title" => ["type" => "string"],
+                                                            "description" => ["type" => "string"],
+                                                            "caption" => ["type" => "string"],
+                                                            "alt" => ["type" => "string"]
+                                                    ],
+                                                    "required" => ["title","description","caption","alt"],
+                                                    "additionalProperties" => false
+                                            ]
+                                    ]
+                            ]
                     ];
+
 
                     $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
                     curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
@@ -437,15 +461,39 @@ class wp_ai_info
                     } else {
                         $response_data = json_decode( $response, true );
                         if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
-                            $description = trim( $response_data['choices'][0]['message']['content'] );
-                            $result = wp_update_post( [
-                                    'ID'           => $attachment_id,
-                                    'post_content' => $description
-                            ], true );
-                            if ( is_wp_error( $result ) ) {
-                                add_settings_error( 'wp_ai_info_image', 'update_failed', $result->get_error_message(), 'error' );
+                            $json_content = trim( $response_data['choices'][0]['message']['content'] );
+
+                            if ( $this->is_json( $json_content ) ) {
+                                $data = json_decode( $json_content, true );
+
+                                $titre      = $data['title'] ?? 'Image';
+                                $description= $data['description'] ?? '';
+                                $legende    = $data['caption'] ?? '';
+                                $alt_text   = $data['alt'] ?? '';
+
+                                // Mise à jour de la pièce jointe
+                                $result = wp_update_post( [
+                                        'ID'           => $attachment_id,
+                                        'post_title'   => $titre,
+                                        'post_content' => $description,
+                                        'post_excerpt' => $legende,
+                                ], true );
+
+                                if ( is_wp_error( $result ) ) {
+                                    add_settings_error( 'wp_ai_info_image', 'update_failed', $result->get_error_message(), 'error' );
+                                } else {
+                                    update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt_text );
+
+                                    add_settings_error(
+                                            'wp_ai_info_image',
+                                            'update_success',
+                                            'Titre, description, légende et texte alternatif mis à jour pour l’ID ' . $attachment_id . '.',
+                                            'success'
+                                    );
+                                }
                             } else {
-                                add_settings_error( 'wp_ai_info_image', 'update_success', 'Description mise à jour pour l\'ID ' . $attachment_id . '.', 'success' );
+                                add_settings_error( 'wp_ai_info_image', 'json_error', 'La réponse de l’IA n’est pas du JSON valide.', 'error' );
+                                gwplog( $json_content );
                             }
                         } elseif ( isset( $response_data['error'] ) ) {
                             add_settings_error( 'wp_ai_info_image', 'api_error', $response_data['error']['message'], 'error' );
@@ -472,6 +520,7 @@ class wp_ai_info
         </form>
         <?php
     }
+
 
     /**
      * Enregistrement des réglages, sections et champs.
