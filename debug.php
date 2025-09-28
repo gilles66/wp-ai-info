@@ -47,7 +47,12 @@ function pre( $p, $color = null, $htmlentities = false ) {
 }
 
 /**
- * prexit()
+ * Affiche une variable et arrête l'exécution du script.
+ *
+ * @param mixed  $p            La variable à afficher.
+ * @param string $color        La couleur de fond.
+ * @param bool   $htmlentities Convertit les caractères en entités HTML.
+ * @return void
  */
 function prexit( $p, $color = null, $htmlentities = false ) {
 	pre( $p, $color, $htmlentities );
@@ -55,7 +60,12 @@ function prexit( $p, $color = null, $htmlentities = false ) {
 }
 
 /**
- * pre2()
+ * Affiche une variable avec var_dump formaté.
+ *
+ * @param mixed  $p            La variable à afficher.
+ * @param string $color        La couleur de fond.
+ * @param bool   $htmlentities Convertit les caractères en entités HTML.
+ * @return void
  */
 function pre2( $p, $color = null, $htmlentities = false ) {
 	tag_pre_open( $color );
@@ -73,11 +83,15 @@ function pre2( $p, $color = null, $htmlentities = false ) {
 }
 
 /**
- * prexit2()
+ * Affiche une variable avec var_dump formaté et arrête l'exécution du script.
+ *
+ * @param mixed  $p     La variable à afficher.
+ * @param string $color La couleur de fond.
+ * @return void
  */
 function prexit2( $p, $color = null ) {
-	pre2( $p, $color );
-	exit;
+    pre2( $p, $color );
+    exit;
 }
 
 /**
@@ -97,7 +111,12 @@ function var_dump_indent( $variable ) {
 }
 
 /**
- * pre3()
+ * Affiche une variable avec var_export formaté.
+ *
+ * @param mixed  $p            La variable à afficher.
+ * @param string $color        La couleur de fond.
+ * @param bool   $htmlentities Convertit les caractères en entités HTML.
+ * @return void
  */
 function pre3( $p, $color = null, $htmlentities = false ) {
 	tag_pre_open( $color );
@@ -110,15 +129,22 @@ function pre3( $p, $color = null, $htmlentities = false ) {
 }
 
 /**
- * prexit3()
+ * Affiche une variable avec var_export formaté et arrête l'exécution du script.
+ *
+ * @param mixed  $p     La variable à afficher.
+ * @param string $color La couleur de fond.
+ * @return void
  */
 function prexit3( $p, $color = null ) {
-	pre3( $p, $color );
-	exit;
+    pre3( $p, $color );
+    exit;
 }
 
 /**
- * tag_pre_open()
+ * Ouvre une balise <pre> avec styles pour l'affichage clair.
+ *
+ * @param string|null $color Couleur de fond.
+ * @return void
  */
 function tag_pre_open( $color ) {
 	$color = ( $color == null ) ? 'aquamarine' : $color; // powderblue
@@ -134,7 +160,9 @@ function tag_pre_open( $color ) {
 }
 
 /**
- * tag_pre_close()
+ * Ferme la balise <pre>.
+ *
+ * @return void
  */
 function tag_pre_close() {
 	echo '</pre>';
@@ -142,6 +170,9 @@ function tag_pre_close() {
 
 /**
  * Loggue avec error_log, en y ajoutant un préfixe utile pour chercher ensuite dans les logs.
+ *
+ * @param mixed $msg Le message ou la variable à logger.
+ * @return void
  *
  * @author Gilles Dumas <circusmind@gmail.com>
  * @since  20150225

@@ -127,9 +127,9 @@ class wp_ai_info
     }
 
     /**
-     * Makes a call to openAI API and inserts a WordPress post.
+     * Makes a call to OpenAI API and inserts a WordPress post.
      *
-     * @return null
+     * @return void
      */
     public function make_openai_call() {
         gwplog( 'make_openai_call()' );
@@ -399,6 +399,11 @@ class wp_ai_info
         <?php
     }
 
+    /**
+     * Affiche le formulaire des réglages généraux.
+     *
+     * @return void
+     */
     public function display_general_settings() {
         ?>
         <form method="post" action="options.php">
@@ -411,6 +416,11 @@ class wp_ai_info
         <?php
     }
 
+    /**
+     * Affiche le formulaire de génération d'article.
+     *
+     * @return void
+     */
     public function display_prompt_settings() {
         ?>
         <form method="post" action="options.php">
@@ -427,6 +437,8 @@ class wp_ai_info
 
     /**
      * Affiche les réglages pour la récupération d'informations d'une image.
+     *
+     * @return void
      */
     public function display_image_settings() {
         if ( isset( $_POST['submit_image'] ) && check_admin_referer( 'wp_ai_info_image_action', 'wp_ai_info_image_nonce' ) ) {
@@ -707,6 +719,11 @@ class wp_ai_info
         <?php
     }
 
+    /**
+     * Ajoute les metaboxes pour les posts et attachments.
+     *
+     * @return void
+     */
     public function wp_ai_info_add_metabox() {
         // Metabox for posts: display WP AI Info metadata
         add_meta_box(
@@ -728,6 +745,12 @@ class wp_ai_info
         );
     }
 
+    /**
+     * Callback pour afficher la metabox WP AI Info dans les posts.
+     *
+     * @param WP_Post $post L'objet post.
+     * @return void
+     */
     public function wp_ai_info_metabox_callback( $post ) {
         $meta_values = get_post_meta( $post->ID );
         echo '<table class="form-table">';
@@ -756,7 +779,12 @@ class wp_ai_info
         echo '</table>';
     }
 
-    /** Enqueue admin scripts for attachment edit screen. */
+    /**
+     * Enqueue admin scripts for attachment edit screen.
+     *
+     * @param string $hook Identifiant du hook admin.
+     * @return void
+     */
     public function enqueue_admin_scripts( $hook ) {
         if ( 'post.php' !== $hook ) {
             return;
@@ -773,7 +801,12 @@ class wp_ai_info
         }
     }
 
-    /** Metabox callback for attachment: generate image fields via OpenAI. */
+    /**
+     * Metabox callback for attachment: generate image fields via OpenAI.
+     *
+     * @param WP_Post $post Objet attachment.
+     * @return void
+     */
     public function attachment_image_generator_metabox( $post ) {
         wp_nonce_field( 'wp_ai_info_image_action', 'wp_ai_info_image_nonce' );
         echo '<button id="wp-ai-info-generate-image" class="button button-primary" data-attachment-id="' . esc_attr( $post->ID ) . '">';
@@ -782,7 +815,11 @@ class wp_ai_info
         echo '<div id="wp-ai-info-image-result" style="margin-top:10px;"></div>';
     }
 
-    /** AJAX handler to generate image metadata via OpenAI. */
+    /**
+     * AJAX handler to generate image metadata via OpenAI.
+     *
+     * @return void
+     */
     public function ajax_generate_image_fields() {
         if ( empty( $_POST['_wpnonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['_wpnonce'] ), 'wp_ai_info_image_action' ) ) {
             wp_send_json_error( 'Nonce invalide.' );
