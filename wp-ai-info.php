@@ -359,20 +359,16 @@ class wp_ai_info
             gwplog( '$attachment_id =' . $attachment_id );
             if ( ! $attachment_id ) {
                 add_settings_error( 'wp_ai_info_image', 'invalid_id', 'Merci de fournir un ID d\'image valide.', 'error' );
-            }
-            else {
-                // Récupérer le chemin local du fichier, générer une miniature et encoder en base64 pour rester sous les limites de tokens
+            } else {
                 $file_path = get_attached_file( $attachment_id );
                 gwplog( '$file_path =' . $file_path );
                 if ( ! $file_path || ! file_exists( $file_path ) ) {
                     add_settings_error( 'wp_ai_info_image', 'invalid_id', 'Attachment ID invalide ou fichier introuvable.', 'error' );
-                }
-                else {
-                    // Création d'une miniature 256x256
+                } else {
+                    // Générer miniature légère
                     $file_to_encode = $file_path;
                     $editor = wp_get_image_editor( $file_path );
                     if ( ! is_wp_error( $editor ) ) {
-                        // Réduction pour limiter les tokens : JPEG 128x128 qualité 30
                         if ( method_exists( $editor, 'set_quality' ) ) {
                             $editor->set_quality( 30 );
                         }
@@ -384,15 +380,11 @@ class wp_ai_info
                     }
                     gwplog( '$file_to_encode = ' . $file_to_encode );
 
-                    // $file_to_encode = wp_get_attachment_image_url($attachment_id, 'thumbnail');
-                    // gwplog( '$file_to_encode =' . $file_to_encode );
-
-                    // Lecture et encodage de l'image en base64 pour inclusion inline
                     $file_content = file_get_contents( $file_to_encode );
-                    $mime_type = wp_check_filetype( $file_to_encode )['type'] ?? 'application/octet-stream';
+                    $mime_type = wp_check_filetype( $file_to_encode )['type'] ?? 'image/jpeg';
                     $base64 = base64_encode( $file_content );
                     $data_uri = 'data:' . $mime_type . ';base64,' . $base64;
-                    // Nettoyage du fichier temporaire si nécessaire
+
                     if ( isset( $saved['path'] ) && $file_to_encode !== $file_path ) {
                         @unlink( $file_to_encode );
                     }
@@ -404,35 +396,42 @@ class wp_ai_info
                         $api_key = self::decrypt_value( $encrypted_value );
                     }
 
-                    // Préparer le prompt avec l'image inline
-                    $markdown_img = '![image](' . $data_uri . ')';
+                    // Préparer le prompt multimodal (texte + image)
                     $messages = [
-                        [
-                            'role'    => 'system',
-                            'content' => "Tu es un assistant multimodal expert en description d'images. Donne une description précise en français, 15 mots maximum, sans ajouter d'informations non visibles."
-                        ],
-                        [
-                            'role'    => 'user',
-                            'content' => "Voici l'image :\n\n" . $markdown_img
-                        ]
+                            [
+                                    "role" => "user",
+                                    "content" => [
+                                            [
+                                                    "type" => "text",
+                                                    "text" => "Décris cette image en français, en 15 mots maximum. Ne rien inventer."
+                                            ],
+                                            [
+                                                    "type" => "image_url",
+                                                    "image_url" => [
+                                                            "url" => $data_uri
+                                                    ]
+                                            ]
+                                    ]
+                            ]
                     ];
 
-                    // Appel à l'API Chat Completions
                     $payload = [
-                        'model'       => 'gpt-4o-mini',
-                        'messages'    => $messages,
-                        'temperature' => 0.0,
-                        'max_tokens'  => 60,
+                            "model"       => "gpt-4o-mini",
+                            "messages"    => $messages,
+                            "temperature" => 0.0,
+                            "max_tokens"  => 60,
                     ];
+
                     $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
                     curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
                     curl_setopt( $ch, CURLOPT_POST, true );
                     curl_setopt( $ch, CURLOPT_HTTPHEADER, [
-                        'Content-Type: application/json',
-                        'Authorization: Bearer ' . $api_key
+                            'Content-Type: application/json',
+                            'Authorization: Bearer ' . $api_key
                     ] );
                     curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $payload ) );
                     $response = curl_exec( $ch );
+
                     if ( curl_errno( $ch ) ) {
                         add_settings_error( 'wp_ai_info_image', 'curl_error', curl_error( $ch ), 'error' );
                     } else {
@@ -440,8 +439,8 @@ class wp_ai_info
                         if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
                             $description = trim( $response_data['choices'][0]['message']['content'] );
                             $result = wp_update_post( [
-                                'ID'           => $attachment_id,
-                                'post_content' => $description
+                                    'ID'           => $attachment_id,
+                                    'post_content' => $description
                             ], true );
                             if ( is_wp_error( $result ) ) {
                                 add_settings_error( 'wp_ai_info_image', 'update_failed', $result->get_error_message(), 'error' );
@@ -452,6 +451,7 @@ class wp_ai_info
                             add_settings_error( 'wp_ai_info_image', 'api_error', $response_data['error']['message'], 'error' );
                         } else {
                             add_settings_error( 'wp_ai_info_image', 'api_error', 'Réponse invalide de l\'API.', 'error' );
+                            gwplog($response_data);
                         }
                     }
                     curl_close( $ch );
