@@ -97,9 +97,20 @@ class wp_ai_info
                 'add_option_page'
         ] );
 
+        // Add metaboxes for posts and attachments
         add_action( 'add_meta_boxes', [
                 $this,
                 'wp_ai_info_add_metabox'
+        ] );
+        // Enqueue admin scripts for attachment edit screen
+        add_action( 'admin_enqueue_scripts', [
+                $this,
+                'enqueue_admin_scripts'
+        ] );
+        // AJAX handler to generate image fields via OpenAI
+        add_action( 'wp_ajax_wp_ai_info_generate_image_fields', [
+                $this,
+                'ajax_generate_image_fields'
         ] );
 
         /**
@@ -693,10 +704,24 @@ class wp_ai_info
     }
 
     public function wp_ai_info_add_metabox() {
-        add_meta_box( 'wp_ai_info_metabox', 'Informations WP AI Info', [
-                $this,
-                'wp_ai_info_metabox_callback'
-        ], 'post', 'normal', 'high' );
+        // Metabox for posts: display WP AI Info metadata
+        add_meta_box(
+            'wp_ai_info_metabox',
+            __( 'Informations WP AI Info', 'wp-ai-info' ),
+            [ $this, 'wp_ai_info_metabox_callback' ],
+            'post',
+            'normal',
+            'high'
+        );
+        // Metabox for attachments: generate image fields via OpenAI
+        add_meta_box(
+            'wp_ai_info_image_generator',
+            __( 'Génération IA Image', 'wp-ai-info' ),
+            [ $this, 'attachment_image_generator_metabox' ],
+            'attachment',
+            'side',
+            'high'
+        );
     }
 
     public function wp_ai_info_metabox_callback( $post ) {
@@ -725,5 +750,157 @@ class wp_ai_info
             }
         }
         echo '</table>';
+    }
+
+    /** Enqueue admin scripts for attachment edit screen. */
+    public function enqueue_admin_scripts( $hook ) {
+        if ( 'post.php' !== $hook ) {
+            return;
+        }
+        $screen = get_current_screen();
+        if ( $screen && 'attachment' === $screen->post_type ) {
+            wp_enqueue_script(
+                'wp-ai-info-admin',
+                WP_AI_INFO_PLUGIN_URL . 'admin.js',
+                array( 'jquery' ),
+                WP_AI_INFO_VERSION,
+                true
+            );
+        }
+    }
+
+    /** Metabox callback for attachment: generate image fields via OpenAI. */
+    public function attachment_image_generator_metabox( $post ) {
+        wp_nonce_field( 'wp_ai_info_image_action', 'wp_ai_info_image_nonce' );
+        echo '<button id="wp-ai-info-generate-image" class="button button-primary" data-attachment-id="' . esc_attr( $post->ID ) . '">';
+        esc_html_e( 'Générer les champs IA', 'wp-ai-info' );
+        echo '</button>';
+        echo '<div id="wp-ai-info-image-result" style="margin-top:10px;"></div>';
+    }
+
+    /** AJAX handler to generate image metadata via OpenAI. */
+    public function ajax_generate_image_fields() {
+        if ( empty( $_POST['_wpnonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['_wpnonce'] ), 'wp_ai_info_image_action' ) ) {
+            wp_send_json_error( 'Nonce invalide.' );
+        }
+        $attachment_id = isset( $_POST['attachment_id'] ) ? intval( $_POST['attachment_id'] ) : 0;
+        if ( ! $attachment_id ) {
+            wp_send_json_error( 'ID d\'image invalide.' );
+        }
+        $file_path = get_attached_file( $attachment_id );
+        if ( ! $file_path || ! file_exists( $file_path ) ) {
+            wp_send_json_error( 'Fichier introuvable.' );
+        }
+        $file_to_encode = $file_path;
+        $editor = wp_get_image_editor( $file_path );
+        if ( ! is_wp_error( $editor ) ) {
+            if ( method_exists( $editor, 'set_quality' ) ) {
+                $editor->set_quality( 30 );
+            }
+            $editor->resize( 128, 128, false );
+            $saved = $editor->save();
+            if ( ! is_wp_error( $saved ) && ! empty( $saved['path'] ) ) {
+                $file_to_encode = $saved['path'];
+            }
+        }
+        $file_content = file_get_contents( $file_to_encode );
+        $mime_type    = wp_check_filetype( $file_to_encode )['type'] ?? 'image/jpeg';
+        $data_uri     = 'data:' . $mime_type . ';base64,' . base64_encode( $file_content );
+        if ( isset( $saved['path'] ) && $file_to_encode !== $file_path ) {
+            @unlink( $file_to_encode );
+        }
+        $encrypted = get_option( self::PREFIX_OPTION_NAME . 'option_api_key' );
+        $api_key   = ! empty( $encrypted ) ? self::decrypt_value( $encrypted ) : '';
+        if ( empty( $api_key ) ) {
+            wp_send_json_error( 'Clé API non configurée.' );
+        }
+        $messages = array(
+            array(
+                'role'    => 'user',
+                'content' => array(
+                    array(
+                        'type' => 'text',
+                        'text' => "Décris cette image en JSON avec les champs suivants :
+                                - title : un titre court en français
+                                - description : une description factuelle en une phrase
+                                - caption : une légende concise
+                                - alt : un texte alternatif simple
+                Réponds uniquement avec du JSON valide."
+                    ),
+                    array(
+                        'type'      => 'image_url',
+                        'image_url' => array( 'url' => $data_uri ),
+                    ),
+                ),
+            ),
+        );
+        $payload = array(
+            'model'           => 'gpt-4o-mini',
+            'messages'        => $messages,
+            'temperature'     => 0.0,
+            'max_tokens'      => 200,
+            'response_format' => array(
+                'type'        => 'json_schema',
+                'json_schema' => array(
+                    'name'       => 'image_metadata',
+                    'schema'     => array(
+                        'type'                 => 'object',
+                        'properties'           => array(
+                            'title'       => array( 'type' => 'string' ),
+                            'description' => array( 'type' => 'string' ),
+                            'caption'     => array( 'type' => 'string' ),
+                            'alt'         => array( 'type' => 'string' ),
+                        ),
+                        'required'             => array( 'title', 'description', 'caption', 'alt' ),
+                        'additionalProperties' => false,
+                    ),
+                ),
+            ),
+        );
+        $response = wp_remote_post(
+            'https://api.openai.com/v1/chat/completions',
+            array(
+                'headers' => array(
+                    'Content-Type'  => 'application/json',
+                    'Authorization' => 'Bearer ' . $api_key,
+                ),
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 60,
+            )
+        );
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( 'Erreur de requête : ' . $response->get_error_message() );
+        }
+        $body = wp_remote_retrieve_body( $response );
+        $data = json_decode( $body, true );
+        if ( isset( $data['choices'][0]['message']['content'] ) ) {
+            $json = trim( $data['choices'][0]['message']['content'] );
+            if ( $this->is_json( $json ) ) {
+                $meta        = json_decode( $json, true );
+                $titre       = $meta['title'] ?? '';
+                $description = $meta['description'] ?? '';
+                $legende     = $meta['caption'] ?? '';
+                $alt_text    = $meta['alt'] ?? '';
+                $result      = wp_update_post(
+                    array(
+                        'ID'           => $attachment_id,
+                        'post_title'   => $titre,
+                        'post_content' => $description,
+                        'post_excerpt' => $legende,
+                    ),
+                    true
+                );
+                if ( is_wp_error( $result ) ) {
+                    wp_send_json_error( $result->get_error_message() );
+                }
+                update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt_text );
+                wp_send_json_success( 'Champs mis à jour.' );
+            }
+            wp_send_json_error( 'Réponse IA non JSON valide.' );
+        }
+        if ( isset( $data['error'] ) ) {
+            wp_send_json_error( $data['error']['message'] );
+        }
+        wp_send_json_error( 'Réponse invalide de l’API.' );
     }
 }
