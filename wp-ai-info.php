@@ -1,16 +1,39 @@
 <?php
-/*
-Plugin Name: WP AI Info
-Description: Insert blog posts automatically using IA.
-Version: 1.0.0
-Author: Gilles Dumas
-Author URI: https://gillesdumas.com
-*/
+/**
+ * Plugin Name: WP AI Info
+ * Plugin URI: https://gillesdumas.com
+ * Description: WP AI Info est un plugin WordPress permettant de créer et publier automatiquement des articles de blog en s’appuyant sur OpenAI.
+ * Version: 1.0.1
+ * Author: Gilles Dumas
+ * Author URI: https://gillesdumas.com
+ * Text Domain: wp-ai-info
+ * Domain Path: /languages
+ */
 
-require_once 'Parsedown.php';
-require_once 'debug.php';
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
-new wp_ai_info;
+// Plugin constants.
+define( 'WP_AI_INFO_VERSION', '1.0.1' );
+define( 'WP_AI_INFO_PLUGIN_FILE', __FILE__ );
+define( 'WP_AI_INFO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'WP_AI_INFO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+// Load dependencies.
+require_once WP_AI_INFO_PLUGIN_DIR . 'Parsedown.php';
+// Load debug helpers only in debug mode.
+if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+    require_once WP_AI_INFO_PLUGIN_DIR . 'debug.php';
+}
+
+// Activation/deactivation hooks.
+register_activation_hook( WP_AI_INFO_PLUGIN_FILE, array( 'wp_ai_info', 'activate' ) );
+register_deactivation_hook( WP_AI_INFO_PLUGIN_FILE, array( 'wp_ai_info', 'deactivate' ) );
+
+// Initialize the plugin.
+new wp_ai_info();
 
 /**
  * Main plugin class.
@@ -28,9 +51,41 @@ class wp_ai_info
     const PREFIX_OPTION_NAME = 'wp_ai_info_';
 
     /**
+     * Activation hook: initialize default options.
+     */
+    public static function activate() {
+        if ( false === get_option( self::PREFIX_OPTION_NAME . 'option_api_key', false ) ) {
+            add_option( self::PREFIX_OPTION_NAME . 'option_api_key', '' );
+        }
+        if ( false === get_option( self::PREFIX_OPTION_NAME . 'option_prompt', false ) ) {
+            add_option( self::PREFIX_OPTION_NAME . 'option_prompt', '' );
+        }
+    }
+
+    /**
+     * Deactivation hook: no-op.
+     */
+    public static function deactivate() {
+        // Nothing to do.
+    }
+
+    /**
+     * Load plugin textdomain for translations.
+     */
+    public function load_textdomain() {
+        load_plugin_textdomain(
+            'wp-ai-info',
+            false,
+            dirname( plugin_basename( WP_AI_INFO_PLUGIN_FILE ) ) . '/languages'
+        );
+    }
+
+    /**
      * Constructor.
      */
     public function __construct() {
+        // Load plugin textdomain for translations.
+        add_action( 'init', [ $this, 'load_textdomain' ] );
 
         add_action( 'admin_init', [
                 $this,
@@ -126,22 +181,29 @@ class wp_ai_info
                 "max_completion_tokens" => 2000
         ];
 
-        $ch = curl_init( $url_open_api_endpoint );
-        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
-        curl_setopt( $ch, CURLOPT_POST, true );
-        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
-                "Content-Type: application/json",
-                "Authorization: Bearer $api_key"
-        ] );
-        curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $data ) );
-
-        $response = curl_exec( $ch );
-
-        if ( curl_errno( $ch ) ) {
-            echo json_encode( [ "error" => curl_error( $ch ) ] );
+        // Prepare and send request via WP HTTP API.
+        $response = wp_remote_post(
+            $url_open_api_endpoint,
+            array(
+                'headers' => array(
+                    'Content-Type'  => 'application/json',
+                    'Authorization' => 'Bearer ' . $api_key,
+                ),
+                'body'    => wp_json_encode( $data ),
+                'timeout' => 60,
+            )
+        );
+        if ( is_wp_error( $response ) ) {
+            add_settings_error(
+                self::PREFIX_OPTION_NAME . 'option_prompt',
+                'option-prompt-error',
+                esc_html__( 'Erreur de requête OpenAI : ', 'wp-ai-info' ) . $response->get_error_message(),
+                'error'
+            );
+            return;
         }
-        else {
-            $response_data = json_decode( $response, true );
+        $response_body = wp_remote_retrieve_body( $response );
+        $response_data = json_decode( $response_body, true );
             // pre2( $response_data );
 
             // Extraire uniquement le contenu généré par OpenAI.
@@ -199,9 +261,7 @@ class wp_ai_info
                     add_settings_error( self::PREFIX_OPTION_NAME . 'option_prompt', 'option-prompt-error', $response_data['error']['message'] );
                 }
             }
-        }
 
-        curl_close( $ch );
         $GLOBALS['wp_ai_info_init_done'] = true;
     }
 
@@ -302,7 +362,7 @@ class wp_ai_info
         }
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e( 'WP AI INFO', 'mon-plugin-textdomain' ); ?></h1>
+            <h1><?php esc_html_e( 'WP AI INFO', 'wp-ai-info' ); ?></h1>
             <h2 class="nav-tab-wrapper">
                 <a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=prompt" class="nav-tab <?php echo ( ! isset( $_GET['tab'] ) || $_GET['tab'] == 'prompt' ) ? 'nav-tab-active' : ''; ?>">Génération d'article</a>
                 <a href="?page=<?php echo self::SLUG_PAGE; ?>&tab=general" class="nav-tab <?php echo ( isset( $_GET['tab'] ) && $_GET['tab'] == 'general' ) ? 'nav-tab-active' : ''; ?>">Settings</a>
@@ -328,8 +388,8 @@ class wp_ai_info
         ?>
         <form method="post" action="options.php">
             <?php
-            settings_fields( 'my_options_group_settings' );
-            do_settings_sections( 'page_settings' );
+            settings_fields( 'wp_ai_info_settings_group' );
+            do_settings_sections( 'wp_ai_info_settings_page' );
             submit_button();
             ?>
         </form>
@@ -340,8 +400,8 @@ class wp_ai_info
         ?>
         <form method="post" action="options.php">
             <?php
-            settings_fields( 'my_options_group_prompt' );
-            do_settings_sections( 'page_prompt' );
+            settings_fields( 'wp_ai_info_prompt_group' );
+            do_settings_sections( 'wp_ai_info_prompt_page' );
             submit_button( 'Générer l\'article' );
             ?>
         </form>
@@ -446,20 +506,23 @@ class wp_ai_info
                     ];
 
 
-                    $ch = curl_init( 'https://api.openai.com/v1/chat/completions' );
-                    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
-                    curl_setopt( $ch, CURLOPT_POST, true );
-                    curl_setopt( $ch, CURLOPT_HTTPHEADER, [
-                            'Content-Type: application/json',
-                            'Authorization: Bearer ' . $api_key
-                    ] );
-                    curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( $payload ) );
-                    $response = curl_exec( $ch );
-
-                    if ( curl_errno( $ch ) ) {
-                        add_settings_error( 'wp_ai_info_image', 'curl_error', curl_error( $ch ), 'error' );
+                    // Send request via WP HTTP API.
+                    $response = wp_remote_post(
+                        'https://api.openai.com/v1/chat/completions',
+                        array(
+                            'headers' => array(
+                                'Content-Type'  => 'application/json',
+                                'Authorization' => 'Bearer ' . $api_key,
+                            ),
+                            'body'    => wp_json_encode( $payload ),
+                            'timeout' => 60,
+                        )
+                    );
+                    if ( is_wp_error( $response ) ) {
+                        add_settings_error( 'wp_ai_info_image', 'api_error', $response->get_error_message(), 'error' );
                     } else {
-                        $response_data = json_decode( $response, true );
+                        $response_body = wp_remote_retrieve_body( $response );
+                        $response_data = json_decode( $response_body, true );
                         if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
                             $json_content = trim( $response_data['choices'][0]['message']['content'] );
 
@@ -502,7 +565,6 @@ class wp_ai_info
                             gwplog($response_data);
                         }
                     }
-                    curl_close( $ch );
                 }
             }
         }
@@ -534,7 +596,7 @@ class wp_ai_info
          */
 
         // Enregistrement du réglage avec callback de sanitization.
-        register_setting( 'my_options_group_settings', self::PREFIX_OPTION_NAME . 'option_api_key', [
+        register_setting( 'wp_ai_info_settings_group', self::PREFIX_OPTION_NAME . 'option_api_key', [
                 'sanitize_callback' => [
                         $this,
                         'sanitize_option'
@@ -542,23 +604,26 @@ class wp_ai_info
         ] );
 
         // Ajout d'une section sur la page d'options.
-        add_settings_section( 'section_id_settings', 'Settings', [
-                $this,
-                'display_section_apikey'
-        ], 'page_settings' );
+        add_settings_section( 'section_id_settings', __( 'Settings', 'wp-ai-info' ), [
+            $this,
+            'display_section_apikey'
+        ], 'wp_ai_info_settings_page' );
 
         // Ajout d'un champ dans la section.
-        add_settings_field( 'wp_ai_info_option', '<label for="option_api_key">OpenAI API KEY</label>', [
-                $this,
-                'display_input_apikey'
-        ], 'page_settings', 'section_id_settings' );
+        add_settings_field(
+            'wp_ai_info_option',
+            '<label for="option_api_key">' . esc_html__( 'OpenAI API KEY', 'wp-ai-info' ) . '</label>',
+            [ $this, 'display_input_apikey' ],
+            'wp_ai_info_settings_page',
+            'section_id_settings'
+        );
 
         /**
          * Le champ prompt.
          */
 
         // Enregistrement du réglage avec callback de sanitization.
-        register_setting( 'my_options_group_prompt', self::PREFIX_OPTION_NAME . 'option_prompt', [
+        register_setting( 'wp_ai_info_prompt_group', self::PREFIX_OPTION_NAME . 'option_prompt', [
                 'sanitize_callback' => [
                         $this,
                         'sanitize_prompt'
@@ -566,15 +631,18 @@ class wp_ai_info
         ] );
 
         // Ajout d'une section sur la page d'options.
-        add_settings_section( 'section_id_prompt', 'Génération d\'un article', [
-                $this,
-                'display_section_prompt'
-        ], 'page_prompt' );
+        add_settings_section( 'section_id_prompt', __( 'Génération d\'un article', 'wp-ai-info' ), [
+            $this,
+            'display_section_prompt'
+        ], 'wp_ai_info_prompt_page' );
 
-        add_settings_field( 'my_prompt', '<label for="option_prompt">Prompt</label>', [
-                $this,
-                'display_input_prompt'
-        ], 'page_prompt', 'section_id_prompt' );
+        add_settings_field(
+            'my_prompt',
+            '<label for="option_prompt">' . esc_html__( 'Prompt', 'wp-ai-info' ) . '</label>',
+            [ $this, 'display_input_prompt' ],
+            'wp_ai_info_prompt_page',
+            'section_id_prompt'
+        );
     }
 
     /**
