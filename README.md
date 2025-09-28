@@ -1,6 +1,6 @@
 # WP AI Info
 
-**Version :** 1.0.0  
+**Version :** 1.0.1  
 **Auteur :** Gilles Dumas  
 **Site de l’auteur :** [https://gillesdumas.com](https://gillesdumas.com)
 
@@ -14,8 +14,9 @@ Pour utiliser ce plugin vous devez disposer d'un compte et d'une [API KEY](https
 
 ## Fonctionnalités
 
-- **Création d’articles automatiques** à partir de l’API OpenAI.
-- **Formatage du texte** avec Markdown (conversion en HTML via [Parsedown](https://github.com/erusev/parsedown)).
+ - **Création d’articles automatiques** à partir de l’API OpenAI.
+ - **Formatage du texte** avec Markdown (conversion en HTML via [Parsedown](https://github.com/erusev/parsedown)).
+ - **Génération IA en masse pour images** : sélectionnez plusieurs images dans la Bibliothèque des médias et utilisez l’action groupée « Générer champs IA » pour mettre à jour leurs métadonnées (titre, description, légende, texte alternatif).
 
 ## Installation
 
