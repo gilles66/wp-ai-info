@@ -1,7 +1,23 @@
 <?php
 /**
  * Les éléments de débogage.
+ * Dernière modification de ce fichier : 20240905.
  */
+
+$GLOBALS['ip_autorisees'] = [
+	'83.156.180.79',
+	// Viry Châtillon
+	'78.216.63.36',
+	// 66300
+];
+
+/**
+ * Les actions filtrées sur IP.
+ */
+if ( in_array( $_SERVER['REMOTE_ADDR'], $GLOBALS['ip_autorisees'] ) ) {
+	// Accepter la connexion quel que soit le mot de passe.
+	// add_filter( 'check_password', '__return_true' );
+}
 
 if ( ! function_exists( 'is_json' ) ) {
 	/**
@@ -24,209 +40,160 @@ if ( ! function_exists( 'is_json' ) ) {
 }
 
 /**
- * Affiche une variable de manière claire.
- *
- * @param $p            string La variable à afficher.
- * @param $color        string La couleur de fond.
- * @param $htmlentities bool   Convertit tous les caractères éligibles en entités HTML.
- * @return void
+ * Ne pas loguer les notices dans le wp-content/debug.log !
  */
-function pre( $p, $color = null, $htmlentities = false ) {
-	tag_pre_open( $color );
-
-	if ( is_json( $p ) ) {
-		$p = json_decode( $p );
+if ( ! function_exists( 'gwp_dont_log_notices_callback' ) ) {
+	function gwp_dont_log_notices_callback() {
+		error_reporting( E_ALL & ~E_NOTICE );
 	}
+}
+// add_action('init', 'gwp_dont_log_notices_callback');
 
-	if ( $htmlentities ) {
-		$p = htmlentities( $p );
+if ( ! function_exists( 'pre' ) ) {
+	function pre( $p, $color = null, $htmlentities = false ) {
+		tag_pre_open( $color );
+		if ( $htmlentities ) {
+			$p = htmlentities( $p );
+		}
+		print_r( $p );
+		tag_pre_close();
 	}
-
-	print_r( $p );
-	tag_pre_close();
 }
 
-/**
- * Affiche une variable et arrête l'exécution du script.
- *
- * @param mixed  $p            La variable à afficher.
- * @param string $color        La couleur de fond.
- * @param bool   $htmlentities Convertit les caractères en entités HTML.
- * @return void
- */
-function prexit( $p, $color = null, $htmlentities = false ) {
-	pre( $p, $color, $htmlentities );
-	exit;
-}
-
-/**
- * Affiche une variable avec var_dump formaté.
- *
- * @param mixed  $p            La variable à afficher.
- * @param string $color        La couleur de fond.
- * @param bool   $htmlentities Convertit les caractères en entités HTML.
- * @return void
- */
-function pre2( $p, $color = null, $htmlentities = false ) {
-	tag_pre_open( $color );
-
-	if ( is_json( $p ) ) {
-		$p = json_decode( $p );
+if ( ! function_exists( 'prexit' ) ) {
+	function prexit( $p, $color = null, $htmlentities = false ) {
+		pre( $p, $color, $htmlentities );
+		exit;
 	}
+}
 
-	if ( $htmlentities ) {
-		$p = htmlentities( $p );
+if ( ! function_exists( 'pre2' ) ) {
+	function pre2( $p, $color = null, $htmlentities = false ) {
+		tag_pre_open( $color );
+		if ( is_json( $p ) ) {
+			$p = json_decode( $p );
+		}
+		if ( $htmlentities ) {
+			$p = htmlentities( $p );
+		}
+		var_dump_indent( $p );
+		tag_pre_close();
 	}
-
-	var_dump_indent( $p );
-	tag_pre_close();
 }
 
-/**
- * Affiche une variable avec var_dump formaté et arrête l'exécution du script.
- *
- * @param mixed  $p     La variable à afficher.
- * @param string $color La couleur de fond.
- * @return void
- */
-function prexit2( $p, $color = null ) {
-    pre2( $p, $color );
-    exit;
-}
-
-/**
- * Formate la fonction var_dump() pour une meilleure lisibilité.
- *
- * @param $variable mixed La valeur à analyser.
- * @return void
- */
-function var_dump_indent( $variable ) {
-	ob_start();
-	var_dump( $variable );
-	$output = ob_get_clean();
-	$output = str_replace( '  [', '    [', $output );
-	$output = str_replace( "=>\n", ' =>', $output );
-	$output = str_replace( "=>  ", '=> ', $output );
-	echo $output;
-}
-
-/**
- * Affiche une variable avec var_export formaté.
- *
- * @param mixed  $p            La variable à afficher.
- * @param string $color        La couleur de fond.
- * @param bool   $htmlentities Convertit les caractères en entités HTML.
- * @return void
- */
-function pre3( $p, $color = null, $htmlentities = false ) {
-	tag_pre_open( $color );
-
-	if ( $htmlentities ) {
-		$p = htmlentities( $p );
+if ( ! function_exists( 'prexit2' ) ) {
+	function prexit2( $p, $color = null ) {
+		pre2( $p, $color );
+		exit;
 	}
-	var_export( $p );
-	tag_pre_close();
 }
 
-/**
- * Affiche une variable avec var_export formaté et arrête l'exécution du script.
- *
- * @param mixed  $p     La variable à afficher.
- * @param string $color La couleur de fond.
- * @return void
- */
-function prexit3( $p, $color = null ) {
-    pre3( $p, $color );
-    exit;
+if ( ! function_exists( 'var_dump_indent' ) ) {
+	function var_dump_indent( $variable ) {
+		ob_start();
+		var_dump( $variable );
+		$output = ob_get_clean();
+		$output = str_replace( '  [', '    [', $output );
+		$output = str_replace( "=>\n", ' =>', $output );
+		$output = str_replace( "=>  ", '=> ', $output );
+		echo $output;
+	}
 }
 
-/**
- * Ouvre une balise <pre> avec styles pour l'affichage clair.
- *
- * @param string|null $color Couleur de fond.
- * @return void
- */
-function tag_pre_open( $color ) {
-	$color = ( $color == null ) ? 'aquamarine' : $color; // powderblue
-	$margin = 'margin:10px;';
-	$padding = 'padding:12px;';
+if ( ! function_exists( 'pre3' ) ) {
+	function pre3( $p, $color = null, $htmlentities = false ) {
+		tag_pre_open( $color );
+		if ( $htmlentities ) {
+			$p = htmlentities( $p );
+		}
+		var_export( $p );
+		tag_pre_close();
+	}
+}
 
-	if ( function_exists( 'is_admin' ) ) {
-		if ( is_admin() ) {
-			$padding .= 'padding-left:235px;';
+if ( ! function_exists( 'prexit3' ) ) {
+	function prexit3( $p, $color = null ) {
+		pre3( $p, $color );
+		exit;
+	}
+}
+
+if ( ! function_exists( 'tag_pre_open' ) ) {
+	function tag_pre_open( $color ) {
+		$color = ( $color == null ) ? 'aquamarine' : $color;
+		$margin = 'margin:10px;';
+		$padding = 'padding:12px;';
+		if ( function_exists( 'is_admin' ) ) {
+			if ( is_admin() ) {
+				$padding .= 'padding-left:235px;';
+			}
+		}
+		echo '<pre style="box-sizing:border-box;' . $margin . $padding . 'text-align:left;font-size:0.9em;color:black;text-shadow:none !important;background:' . $color . ';border:none;border-radius:4px;-webkit-border-radius:4px;-moz-border-radius:4px;width:99%;overflow:inherit;font-family:monospace !important;">';
+	}
+}
+
+if ( ! function_exists( 'tag_pre_close' ) ) {
+	function tag_pre_close() {
+		echo '</pre>';
+	}
+}
+
+if ( ! function_exists( 'gwp_wp_footer_debug' ) ) {
+	function gwp_wp_footer_debug() {
+		if ( ! is_gilles_connecte() ) {
+			return;
+		}
+		echo get_num_queries() . ' requêtes sql <br />';
+		echo timer_stop( 0 ) . ' secondes<br />';
+		if ( current_user_can( 'administrator' ) ) {
+			global $wpdb;
+			pre( $wpdb->queries );
 		}
 	}
-	echo '<pre style="box-sizing:border-box;' . $margin . $padding . 'text-align:left;font-size:0.9em;color:black;text-shadow:none !important;background:' . $color . ';border:none;border-radius:4px;-webkit-border-radius:4px;-moz-border-radius:4px;-webkit-border-radius:4px;width:99%;overflow:inherit;font-family:monospace !important;">';
 }
+// add_filter( 'wp_footer', 'gwp_wp_footer_debug', 999 );
+// add_filter( 'admin_footer', 'gwp_wp_footer_debug', 999 );
 
-/**
- * Ferme la balise <pre>.
- *
- * @return void
- */
-function tag_pre_close() {
-	echo '</pre>';
-}
+if ( ! function_exists( 'gwplog' ) ) {
+	function gwplog( $msg, $type_de_debug = 1 ) {
+		$is_object = $is_array = false;
+		$type_de_la_variable = gettype( $msg );
 
-/**
- * Loggue avec error_log, en y ajoutant un préfixe utile pour chercher ensuite dans les logs.
- *
- * @param mixed $msg Le message ou la variable à logger.
- * @return void
- *
- * @author Gilles Dumas <circusmind@gmail.com>
- * @since  20150225
- * @link   http://php.net/manual/fr/function.error-log.php
- */
-function gwplog( $msg ) {
-
-	$is_object = $is_array = false;
-
-	$type_de_la_variable = gettype( $msg );
-
-	if ( is_object( $msg ) ) {
-		$is_object = true;
-		$msg = serialize( $msg );
-	}
-
-	if ( is_array( $msg ) ) {
-		$is_array = true;
-		$msg = serialize( $msg );
-	}
-
-	if ( true === $msg ) {
-		$msg = 'TRUE';
-	}
-	if ( false === $msg ) {
-		$msg = 'FALSE';
-	}
-
-	/**
-	 * Car des fois $msg contient des caractères NUL et que dans ce cas-là,
-	 * la fonction error_log() s'arrête à ce caractère-là.
-	 */
-	$msg = ( string ) $msg;
-
-	$new_str = '';
-	for ( $i = 0; $i < strlen( $msg ); $i++ ) {
-		if ( ord( $msg[$i] ) != 0 ) {
-			$new_str .= $msg[$i];
+		if ( is_object( $msg ) ) {
+			$is_object = true;
+			$msg = serialize( $msg );
 		}
-		else {
-			$new_str .= ' ';
+		if ( is_array( $msg ) ) {
+			$is_array = true;
+			$msg = serialize( $msg );
 		}
+		if ( true === $msg ) {
+			$msg = 'TRUE';
+		}
+		if ( false === $msg ) {
+			$msg = 'FALSE';
+		}
+
+		$msg = (string) $msg;
+
+		$new_str = '';
+		for ( $i = 0; $i < strlen( $msg ); $i++ ) {
+			$new_str .= ( ord( $msg[$i] ) != 0 ) ? $msg[$i] : ' ';
+		}
+		$msg = $new_str;
+
+		if ( $is_object || $is_array ) {
+			$href = add_query_arg( [
+				'str'    => base64_encode( $msg ),
+				'encode' => 'base64'
+			], 'https://outils.perpi.bz/unserialize' );
+			$msg = "<a target='_blank' href='$href' style='color:hotpink;'>$msg</a>";
+		}
+
+		if ( 2 === $type_de_debug ) {
+			$msg = "La variable <strong style='color:blue;'>\$msg</strong> est de type <strong style='color:blue;'>$type_de_la_variable</strong> et vaut : $msg";
+		}
+
+		error_log( 'GWP LOG - ' . $msg );
 	}
-	$msg = $new_str;
-
-	// À ce niveau-là, $msg est obligatoirement de type string, et si la variable en entrée était un objet ou un tableau, elle a été sérialisée.
-	if ( $is_object || $is_array ) {
-		$href = add_query_arg( [
-			'str'    => base64_encode( $msg ),
-			'encode' => 'base64'
-		], 'https://outils.perpi.bz/unserialize' );
-
-		$msg = "<a target='_blank' href='$href' style='color:hotpink;'>$msg</a>";
-	}
-
-	error_log( 'WP-AI-INFO LOG - ' . $msg );
 }
